@@ -233,20 +233,24 @@ async function main() {
   }
 
   // ── Configuração Inicial da Empresa Piloto ───────────────────────
-  await prisma.empresaConfig.upsert({
-    where: { id: 'default' },
-    update: {},
-    create: {
-      id: 'default',
-      razaoSocial: `${pilotName} LTDA`,
-      nomeFantasia: pilotName,
-      cnpj: process.env.PILOT_CLIENT_CNPJ ?? '',
-      email: adminEmail,
-      erpTipo: 'POSTGRESQL',
-      erpPorta: 5432,
-      erpAtivo: false,
-    },
-  });
+  try {
+    await prisma.empresaConfig.upsert({
+      where: { id: 'default' },
+      update: {},
+      create: {
+        id: 'default',
+        razaoSocial: `${pilotName} LTDA`,
+        nomeFantasia: pilotName,
+        cnpj: process.env.PILOT_CLIENT_CNPJ ?? '',
+        email: adminEmail,
+        erpTipo: 'POSTGRESQL',
+        erpPorta: 5432,
+        erpAtivo: false,
+      },
+    });
+  } catch (err: unknown) {
+    console.warn('⚠️ [Seed] Não foi possível provisionar EmpresaConfig inicial (tabela desatualizada):', err instanceof Error ? err.message : String(err));
+  }
 
   // ── Padrões OFX padrão (biblioteca inicial) ──────────────────────
   const padroesSeed = [
