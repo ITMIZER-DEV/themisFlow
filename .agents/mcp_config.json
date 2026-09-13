@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "vrsoftware-db": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://itmizer:themis_dev_2026@localhost:5433/themisflow?options=-c%20default_transaction_read_only%3Don"
+      ],
+      "env": {
+        "DB_READONLY": "true"
+      }
+    }
+  }
+}

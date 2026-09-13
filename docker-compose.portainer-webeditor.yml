@@ -1,0 +1,92 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# ThemisFlow — docker-compose.portainer-webeditor.yml
+# Versão pronta para COPIAR E COLAR no Portainer Web Editor.
+#
+# ── COMO USAR ESTE ARQUIVO NO PORTAINER ───────────────────────────────────────
+# 1. No Portainer: Stacks → Add Stack → Web Editor.
+# 2. Nome da Stack: themisflow
+# 3. Cole TODO o conteúdo deste arquivo.
+# 4. Pré-requisito: As imagens 'themisflow-api:mvp' e 'themisflow-web:mvp'
+#    já devem ter sido carregadas no servidor (via 'docker load' ou registro).
+#    Dica: use o script 'scripts/build-mvp.ps1' ou 'scripts/build-mvp.sh'
+#    para gerar o pacote de imagens 'themisflow-mvp-images.tar.gz'.
+#
+# ── ACESSO APÓS DEPLOY ───────────────────────────────────────────────────────
+#   Sistema Web: http://<IP-DO-SERVIDOR>
+#   PostgreSQL:  host=<IP-DO-SERVIDOR> porta=5432 banco=themisflow user=itmizer
+#
+# ── CREDENCIAIS DO ADMINISTRADOR (PRIMEIRO ACESSO) ───────────────────────────
+#   E-mail:  admin@themisflow.local
+#   Senha:   ThemisFlow@2026
+#   ⚠️  Troque a senha após o primeiro login em: /admin/usuarios
+# ══════════════════════════════════════════════════════════════════════════════
+
+networks:
+  themisflow:
+    name: themisflow_network
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: themisflow_pgdata
+
+services:
+
+  # ── 1. Banco de Dados PostgreSQL ───────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: themisflow-db
+    restart: unless-stopped
+    networks:
+      - themisflow
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-themisflow}
+      POSTGRES_USER: ${POSTGRES_USER:-itmizer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Th3m1s_DB_2026!}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-itmizer} -d $${POSTGRES_DB:-themisflow}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  # ── 2. API Fastify (Backend) ───────────────────────────────────────────────
+  api:
+    image: themisflow-api:mvp
+    container_name: themisflow-api
+    restart: unless-stopped
+    networks:
+      - themisflow
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-itmizer}:${POSTGRES_PASSWORD:-Th3m1s_DB_2026!}@db:5432/${POSTGRES_DB:-themisflow}
+      JWT_SECRET: ${JWT_SECRET:-7f2c1b9e4a8d3f6c0e5b2a9d1f8c7e4b3a6d9f2c1b8e5a3d7f0c4b2e9a1d6c}
+      # ── Dados do Cliente Piloto e Usuários Iniciais ───────────────────
+      PILOT_CLIENT_NAME: ${PILOT_CLIENT_NAME:-Cliente Piloto}
+      ADMIN_NOME: ${ADMIN_NOME:-Administrador}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-ti@supermercadoimperial.com.br}
+      ADMIN_SENHA: ${ADMIN_SENHA:-ThemisFlow@2026}
+      OPERADOR_NOME: ${OPERADOR_NOME:-Operador Financeiro}
+      OPERADOR_EMAIL: ${OPERADOR_EMAIL:-operador@themisflow.local}
+      OPERADOR_SENHA: ${OPERADOR_SENHA:-Operador@2026}
+      # ──────────────────────────────────────────────────────────────────
+      NODE_ENV: production
+      CORS_ORIGIN: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── 3. Frontend Web (Nginx + SPA Vite) ─────────────────────────────────────
+  web:
+    image: themisflow-web:mvp
+    container_name: themisflow-web
+    restart: unless-stopped
+    networks:
+      - themisflow
+    ports:
+      - "${WEB_PORT:-8098}:80"
+    depends_on:
+      - api

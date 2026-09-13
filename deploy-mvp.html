@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ThemisFlow — Guia de Deploy MVP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Manrope:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0b1220;
+      --panel:     #111827;
+      --panel-alt: #1a2233;
+      --border:    #1e2d45;
+      --teal:      #00c9b1;
+      --teal-dim:  #00c9b120;
+      --gold:      #f0a500;
+      --gold-dim:  #f0a50020;
+      --red:       #ff5d6c;
+      --red-dim:   #ff5d6c18;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --soft:      #94a3b8;
+      --font:      'DM Sans', sans-serif;
+      --mono:      'DM Mono', monospace;
+      --title:     'Manrope', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ────────────────────────────────── */
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* ── Header ────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-svg { flex-shrink: 0; }
+
+    .header-text h1 {
+      font-family: var(--title);
+      font-weight: 800;
+      font-size: 2rem;
+      background: linear-gradient(135deg, var(--teal), var(--gold));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: .02em;
+    }
+
+    .header-text p {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    .badge {
+      margin-left: auto;
+      background: var(--teal-dim);
+      border: 1px solid var(--teal);
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: .05em;
+      white-space: nowrap;
+    }
+
+    /* ── Alert box ─────────────────────────────── */
+    .alert {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin-bottom: 32px;
+      font-size: 0.875rem;
+    }
+
+    .alert-warn {
+      background: var(--gold-dim);
+      border: 1px solid #f0a50040;
+      color: var(--gold);
+    }
+
+    .alert-icon { font-size: 1.1rem; line-height: 1.4; flex-shrink: 0; }
+
+    /* ── Sections ──────────────────────────────── */
+    .section { margin-bottom: 40px; }
+
+    .section-title {
+      font-family: var(--title);
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--teal);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Cards de credencial ───────────────────── */
+    .cred-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .cred-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s, transform .15s;
+    }
+
+    .cred-card:hover {
+      border-color: var(--teal);
+      transform: translateY(-2px);
+    }
+
+    .cred-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+
+    .cred-card.teal::before { background: linear-gradient(90deg, var(--teal), transparent); }
+    .cred-card.gold::before { background: linear-gradient(90deg, var(--gold), transparent); }
+    .cred-card.red::before  { background: linear-gradient(90deg, var(--red),  transparent); }
+
+    .cred-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 6px;
+    }
+
+    .cred-value {
+      font-family: var(--mono);
+      font-size: 1.05rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .cred-value.big {
+      font-size: 1.25rem;
+      color: var(--teal);
+      font-weight: 500;
+    }
+
+    .cred-icon {
+      position: absolute;
+      top: 16px; right: 16px;
+      font-size: 1.3rem;
+      opacity: .4;
+    }
+
+    /* ── Tabela de containers ──────────────────── */
+    .table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead { background: var(--panel-alt); }
+
+    th {
+      padding: 11px 16px;
+      text-align: left;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+
+    tr:hover td { background: var(--panel-alt); }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+    }
+
+    .tag-teal { background: var(--teal-dim); color: var(--teal); }
+    .tag-gold { background: var(--gold-dim); color: var(--gold); }
+    .tag-red  { background: var(--red-dim);  color: var(--red); }
+    .tag-gray { background: #1e2d45; color: var(--soft); }
+
+    /* ── Steps ─────────────────────────────────── */
+    .steps { list-style: none; }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .step:last-child { border-bottom: none; }
+
+    .step-num {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+      border-radius: 50%;
+      background: var(--teal-dim);
+      border: 1px solid var(--teal);
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-body { flex: 1; }
+
+    .step-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 0.85rem;
+      color: var(--soft);
+      line-height: 1.6;
+    }
+
+    /* ── Code block ────────────────────────────── */
+    .code {
+      background: #07101c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--teal);
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.7;
+    }
+
+    .code .cm { color: var(--muted); }
+    .code .ky { color: #7dd3fc; }
+    .code .st { color: var(--gold); }
+    .code .nu { color: var(--red); }
+
+    /* ── URL de acesso grande ──────────────────── */
+    .access-box {
+      background: linear-gradient(135deg, #00c9b10f, #f0a5000a);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .access-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 8px;
+    }
+
+    .access-url {
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      color: var(--teal);
+      font-weight: 500;
+    }
+
+    .access-note {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    /* ── Footer ────────────────────────────────── */
+    .footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .print-btn {
+      background: var(--teal-dim);
+      border: 1px solid var(--teal);
+      color: var(--teal);
+      font-family: var(--font);
+      font-size: 0.78rem;
+      padding: 6px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+
+    .print-btn:hover { background: #00c9b130; }
+
+    @media print {
+      body { background: #fff; color: #000; }
+      .print-btn { display: none; }
+      .cred-card { border: 1px solid #ccc !important; }
+    }
+
+    @media (max-width: 600px) {
+      .header { flex-wrap: wrap; }
+      .badge { margin-left: 0; }
+      .access-url { font-size: 1.1rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ──────────────────────────────────────────────── -->
+  <header class="header">
+    <svg class="logo-svg" width="52" height="52" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#111827"/>
+      <!-- Haste -->
+      <rect x="30.5" y="10" width="3" height="44" rx="1.5" fill="#00c9b1"/>
+      <!-- Travessão -->
+      <rect x="14" y="19" width="36" height="3" rx="1.5" fill="#00c9b1"/>
+      <!-- Prato esquerdo (teal) -->
+      <ellipse cx="20" cy="35" rx="9" ry="3" fill="#00c9b1" opacity=".9"/>
+      <line x1="20" y1="22" x2="20" y2="35" stroke="#00c9b1" stroke-width="1.5" stroke-dasharray="2 2"/>
+      <!-- Prato direito (gold) -->
+      <ellipse cx="44" cy="35" rx="9" ry="3" fill="#f0a500" opacity=".9"/>
+      <line x1="44" y1="22" x2="44" y2="35" stroke="#f0a500" stroke-width="1.5" stroke-dasharray="2 2"/>
+    </svg>
+    <div class="header-text">
+      <h1>ThemisFlow</h1>
+      <p>ITMIZER · Guia de Deploy — Ambiente MVP</p>
+    </div>
+    <div class="badge">v0.1 · MVP</div>
+  </header>
+
+  <!-- ── Alerta ──────────────────────────────────────────────── -->
+  <div class="alert alert-warn">
+    <span class="alert-icon">⚠️</span>
+    <div>
+      <strong>Ambiente de teste (MVP).</strong>
+      Credenciais visíveis neste documento são para o primeiro acesso.
+      Troque a senha do administrador imediatamente após o login.
+      Não compartilhe este documento com terceiros.
+    </div>
+  </div>
+
+  <!-- ── Acesso ───────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">🌐 Acesso ao Sistema</div>
+    <div class="access-box">
+      <div class="access-label">URL do sistema</div>
+      <div class="access-url">http://&lt;IP-DO-SERVIDOR&gt;</div>
+      <div class="access-note">Substitua &lt;IP-DO-SERVIDOR&gt; pelo endereço IP da máquina onde os containers estão rodando</div>
+    </div>
+  </div>
+
+  <!-- ── Credenciais do Admin ────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">🔑 Credenciais do Administrador</div>
+    <div class="cred-grid">
+      <div class="cred-card teal">
+        <span class="cred-icon">📧</span>
+        <div class="cred-label">E-mail de acesso</div>
+        <div class="cred-value big">admin@themisflow.local</div>
+      </div>
+      <div class="cred-card gold">
+        <span class="cred-icon">🔒</span>
+        <div class="cred-label">Senha inicial</div>
+        <div class="cred-value big" style="color:var(--gold)">ThemisFlow@2026</div>
+      </div>
+      <div class="cred-card teal">
+        <span class="cred-icon">👤</span>
+        <div class="cred-label">Perfil</div>
+        <div class="cred-value">Administrador</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">Acesso total ao sistema</div>
+      </div>
+    </div>
+    <div class="alert alert-warn" style="margin-bottom:0">
+      <span class="alert-icon">🔐</span>
+      <div>
+        Após o primeiro login, acesse <strong>/admin/usuarios</strong> e altere a senha.
+        A senha padrão é apenas para o deploy inicial.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Banco de Dados ──────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">🗄️ Banco de Dados (PostgreSQL)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Parâmetro</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Host</td>
+            <td><span class="tag tag-gray">&lt;IP-DO-SERVIDOR&gt;</span></td>
+          </tr>
+          <tr>
+            <td>Porta</td>
+            <td><span class="tag tag-teal">5432</span></td>
+          </tr>
+          <tr>
+            <td>Banco</td>
+            <td><code style="font-family:var(--mono);color:var(--teal)">themisflow</code></td>
+          </tr>
+          <tr>
+            <td>Usuário</td>
+            <td><code style="font-family:var(--mono);color:var(--text)">itmizer</code></td>
+          </tr>
+          <tr>
+            <td>Senha</td>
+            <td><code style="font-family:var(--mono);color:var(--gold)">Th3m1s_DB_2026!</code></td>
+          </tr>
+          <tr>
+            <td>Client recomendado</td>
+            <td><span class="tag tag-gray">DBeaver</span> ou <span class="tag tag-gray">pgAdmin 4</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Containers ─────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">🐳 Containers Docker</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Container</th>
+            <th>Imagem</th>
+            <th>Função</th>
+            <th>Porta Externa</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code style="font-family:var(--mono)">themisflow-db</code></td>
+            <td><span class="tag tag-gray">postgres:16-alpine</span></td>
+            <td>Banco de dados PostgreSQL</td>
+            <td><span class="tag tag-teal">5432</span></td>
+          </tr>
+          <tr>
+            <td><code style="font-family:var(--mono)">themisflow-api</code></td>
+            <td><span class="tag tag-gray">themisflow-api:mvp</span></td>
+            <td>API Fastify + Prisma ORM</td>
+            <td><span class="tag tag-gold">interna</span></td>
+          </tr>
+          <tr>
+            <td><code style="font-family:var(--mono)">themisflow-web</code></td>
+            <td><span class="tag tag-gray">themisflow-web:mvp</span></td>
+            <td>Frontend React + Nginx</td>
+            <td><span class="tag tag-teal">80</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:0.78rem;color:var(--muted);margin-top:10px">
+      💡 A API não é exposta externamente — o Nginx faz proxy de
+      <code style="font-family:var(--mono);color:var(--teal)">/api/*</code>
+      para o container <code style="font-family:var(--mono)">api:3001</code> internamente.
+    </p>
+  </div>
+
+  <!-- ── Startup automático ──────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">⚡ Startup Automático</div>
+    <p style="font-size:0.875rem;color:var(--soft);margin-bottom:14px">
+      No primeiro boot (e em toda reinicialização), o container da API executa automaticamente:
+    </p>
+    <div class="code"><span class="cm"># entrypoint.sh — executado a cada startup do container api</span>
+<span class="ky">prisma migrate deploy</span>   <span class="cm"># aplica migrações pendentes</span>
+<span class="ky">tsx prisma/seed.ts</span>       <span class="cm"># cria admin (idempotente — seguro repetir)</span>
+<span class="ky">node dist/server.js</span>      <span class="cm"># inicia o servidor Fastify</span></div>
+    <p style="font-size:0.78rem;color:var(--muted);margin-top:10px">
+      O seed usa <code style="font-family:var(--mono);color:var(--teal)">upsert</code>
+      — se o usuário admin já existir com senha alterada, <strong>não sobrescreve</strong>.
+    </p>
+  </div>
+
+  <!-- ── Deploy no Portainer ────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">🚀 Deploy no Portainer</div>
+    <ol class="steps">
+      <li class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Fazer o build das imagens</div>
+          <div class="step-desc">
+            No servidor onde está o código-fonte, execute:
+          </div>
+          <div class="code"><span class="ky">docker compose</span> -f docker-compose.portainer-mvp.yml <span class="ky">build</span></div>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Abrir o Portainer</div>
+          <div class="step-desc">
+            Acesse a interface do Portainer no servidor do cliente:
+            <code style="font-family:var(--mono);color:var(--teal)">https://&lt;IP&gt;:9443</code>
+          </div>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Criar um novo Stack</div>
+          <div class="step-desc">
+            Navegue até <strong>Stacks → Add Stack → Web Editor</strong><br/>
+            Cole o conteúdo do arquivo
+            <code style="font-family:var(--mono);color:var(--gold)">docker-compose.portainer-mvp.yml</code>
+          </div>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Fazer o Deploy</div>
+          <div class="step-desc">
+            Clique em <strong>Deploy the stack</strong> e aguarde os 3 containers subirem
+            com status <span class="tag tag-teal" style="font-size:0.7rem">✓ running</span>
+          </div>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Primeiro acesso</div>
+          <div class="step-desc">
+            Acesse <code style="font-family:var(--mono);color:var(--teal)">http://&lt;IP-DO-SERVIDOR&gt;</code>
+            e faça login com as credenciais de administrador acima.<br/>
+            <strong style="color:var(--gold)">Troque a senha imediatamente!</strong>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <!-- ── Arquitetura ────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">🏗️ Arquitetura dos Containers</div>
+    <div class="code" style="color:var(--soft)"><span class="cm">  Navegador do usuário</span>
+        │
+        ▼ HTTP :80
+  <span class="tag tag-teal" style="font-size:0.72rem;display:inline">themisflow-web</span>  (Nginx)
+        │
+        ├──── /           →  serve arquivos estáticos React
+        │
+        └──── /api/*      →  proxy reverso
+                              │
+                              ▼ :3001 (rede interna Docker)
+                        <span class="tag tag-gold" style="font-size:0.72rem;display:inline">themisflow-api</span>  (Fastify)
+                              │
+                              ▼ :5432 (rede interna Docker)
+                        <span class="tag tag-gray" style="font-size:0.72rem;display:inline">themisflow-db</span>   (PostgreSQL 16)
+                              │
+                              ▼
+                        Volume: <span style="color:var(--teal)">themisflow_pgdata</span>  (dados persistidos)</div>
+  </div>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div>
+      ThemisFlow v0.1 · ITMIZER · Documento gerado em
+      <script>document.write(new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}))</script>
+    </div>
+    <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,426 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(cuid())
+  nome            String
+  email           String           @unique
+  senha           String
+  ativo           Boolean          @default(true)
+  criadoEm        DateTime         @default(now())
+  atualizadoEm    DateTime         @updatedAt
+  roles           UserRole[]
+  sitefLotes      SitefLote[]
+  taxasContratos  TaxaContrato[]
+  adquirenteLotes AdquirenteLote[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  nome        String
+  slug        String           @unique
+  descricao   String?
+  users       UserRole[]
+  permissions RolePermission[]
+  menuItems   RoleMenuItem[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  chave       String           @unique
+  descricao   String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model MenuItem {
+  id        String         @id @default(cuid())
+  chave     String         @unique
+  rotulo    String
+  icone     String?
+  rota      String
+  permissao String?
+  parentId  String?
+  ordem     Int            @default(0)
+  ativo     Boolean        @default(true)
+  parent    MenuItem?      @relation("MenuTree", fields: [parentId], references: [id])
+  filhos    MenuItem[]     @relation("MenuTree")
+  roles     RoleMenuItem[]
+}
+
+model RoleMenuItem {
+  roleId     String
+  menuItemId String
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuItemId])
+}
+
+// ── Taxas e Contratos de Adquirente ───────────────────────────────
+
+model TaxaContrato {
+  id           String        @id @default(cuid())
+  nome         String
+  rede         String        // CIELO, REDE, GETNET, STONE, PAGSEGURO, SUMUP, etc.
+  dataInicio   DateTime      @db.Date
+  dataFim      DateTime?     @db.Date
+  ativo        Boolean       @default(true)
+  observacoes  String?
+  criadoPor    String?
+  criador      User?         @relation(fields: [criadoPor], references: [id], onDelete: SetNull)
+  criadoEm    DateTime      @default(now())
+  atualizadoEm DateTime     @updatedAt
+
+  itens        TaxaItem[]
+  alugueis     TaxaAluguel[]
+  encargos     TaxaEncargo[]
+
+  @@index([rede])
+  @@index([ativo])
+}
+
+// Taxa MDR por tipo de pagamento, bandeira e modalidade de parcelamento
+model TaxaItem {
+  id               String       @id @default(cuid())
+  contratoId       String
+  contrato         TaxaContrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  // CREDITO | DEBITO | ALIMENTACAO | REFEICAO | COMBUSTIVEL | VOUCHER
+  tipoPagamento    String
+  // VISA | MASTER | ELO | AMEX | HIPERCARD | CABAL | VR | VA | ALELO | SODEXO | TICKET | BEN | OUTROS
+  bandeira         String
+  // A_VISTA | PARCELADO_LOJA | PARCELADO_ADM
+  modalidade       String
+
+  parcelaMin       Int     @default(1)
+  parcelaMax       Int     @default(1)
+  taxaMdr          Decimal @db.Decimal(8, 4)   // e.g. 2.3500 = 2.35%
+  taxaAntecipacao  Decimal @db.Decimal(8, 4)   @default(0) // taxa de antecipação ao dia
+  prazoRecebimento Int     @default(30)          // D+X (1, 2, 30...)
+  taxaFixa         Decimal @db.Decimal(10, 2)   @default(0) // R$ por transação
+
+  @@unique([contratoId, tipoPagamento, bandeira, modalidade, parcelaMin, parcelaMax])
+  @@index([contratoId])
+  @@index([tipoPagamento, bandeira])
+}
+
+// Aluguel de terminais POS / Pinpad
+model TaxaAluguel {
+  id            String       @id @default(cuid())
+  contratoId    String
+  contrato      TaxaContrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  descricao     String   // "POS Loja Centro", "Pinpad PDV 3", etc.
+  qtdTerminais  Int      @default(1)
+  valorUnitario Decimal  @db.Decimal(10, 2)
+  ativo         Boolean  @default(true)
+
+  @@index([contratoId])
+}
+
+// Outros encargos: PCI DSS, chargeback, mensalidade gateway, taxa de adesão
+model TaxaEncargo {
+  id          String       @id @default(cuid())
+  contratoId  String
+  contrato    TaxaContrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  descricao   String
+  // MENSAL | POR_OCORRENCIA | PERCENTUAL_VENDA | ANUAL
+  tipo        String
+  valor       Decimal  @db.Decimal(10, 4)  // R$ ou % dependendo do tipo
+  ativo       Boolean  @default(true)
+
+  @@index([contratoId])
+}
+
+// ── Adquirentes (Getnet, Cielo, Stone, Rede…) ─────────────────────
+
+model AdquirenteLote {
+  id           String    @id @default(cuid())
+  // GETNET | CIELO | STONE | REDE | PAGSEGURO | SUMUP
+  gateway      String
+  // VENDAS | RECEBIVEIS
+  tipo         String
+  arquivo      String
+  dataInicio   DateTime  @db.Date
+  dataFim      DateTime  @db.Date
+  importadoEm  DateTime  @default(now())
+  importadoPor String?
+  importador   User?     @relation(fields: [importadoPor], references: [id], onDelete: SetNull)
+  adicionadas  Int       @default(0)
+  ignoradas    Int       @default(0)
+
+  vendas       AdquirenteVenda[]
+  recebiveis   AdquirenteRecebivel[]
+
+  @@index([gateway, tipo])
+  @@index([dataInicio, dataFim])
+}
+
+// Uma transação de venda importada da planilha Vendas_Detalhado
+model AdquirenteVenda {
+  // "GETNET::14961495::007005726"  (gateway::ec::nsu)
+  idempotencyKey  String   @id
+
+  loteId          String
+  lote            AdquirenteLote @relation(fields: [loteId], references: [id], onDelete: Restrict)
+
+  gateway         String
+  ec              String    // código do estabelecimento
+  cnpj            String
+
+  // Normalizado para busca: VISA | MASTER | ELO | AMEX | HIPERCARD | ALELO | SODEXO | TICKET | BEN | OUTROS
+  bandeira        String
+  bandeiraBruta   String    // valor original da planilha
+
+  // CREDITO | DEBITO | VOUCHER
+  modalidade      String
+  formaPagamento  String    // "Crédito À Vista", "Débito", etc.
+
+  dataHoraVenda   DateTime
+  // APROVADA | CANCELADA | CHARGEBACK
+  status          String
+  parcelas        Int       @default(1)
+  dataPrimeiroPgto DateTime? @db.Date
+
+  cartaoMascarado String
+  autorizacao     String
+  nsu             String    // Número do Comprovante de Vendas (CV)
+  terminal        String
+  meioCaptura     String    // TEF | POS | ECOMMERCE | DIGITADO
+
+  valorBruto      Decimal   @db.Decimal(15, 2)
+  valorTaxa       Decimal   @db.Decimal(15, 2)  // sempre negativo (dedução)
+  valorLiquido    Decimal   @db.Decimal(15, 2)
+
+  // Confronto com SITEF (Fluxo 1)
+  sitefKey        String?   // → SitefTransacao.idempotencyKey
+  // PENDENTE | CONCILIADO | SEM_SITEF | SEM_ADQ
+  statusConc      String    @default("PENDENTE")
+
+  @@unique([gateway, ec, nsu])
+  @@index([loteId])
+  @@index([dataHoraVenda])
+  @@index([gateway, bandeira, modalidade])
+  @@index([nsu])
+  @@index([statusConc])
+}
+
+// Uma linha de Recebivel_Completos (sheet Detalhado)
+model AdquirenteRecebivel {
+  // "GETNET::14961495::007005726::2026-06-05" para linhas com NSU
+  // "GETNET::14961495::PAGAMENTO::2026-06-05::EloCredito" para linhas de liquidação
+  idempotencyKey  String   @id
+
+  loteId          String
+  lote            AdquirenteLote @relation(fields: [loteId], references: [id], onDelete: Restrict)
+
+  gateway         String
+  ec              String
+  ecCentralizador String
+  cnpj            String
+
+  dataVencimento  DateTime  @db.Date
+  bandeira        String
+  modalidade      String
+
+  // VENDA | PAGAMENTO_REALIZADO | SALDO_ANTERIOR | CANCELAMENTO | AJUSTE
+  tipoLancamento  String
+  lancamento      String    // detalhe: "Venda Crédito A Vista", "Valor Liquidado (R$)", etc.
+
+  valorLiquido    Decimal   @db.Decimal(15, 2)
+  valorLiquidado  Decimal   @db.Decimal(15, 2)
+
+  cartaoMascarado     String?
+  autorizacao         String?
+  nsu                 String?
+  terminal            String?
+  dataVenda           DateTime? @db.Date
+  horaVenda           String?
+  valorVenda          Decimal?  @db.Decimal(15, 2)  // VALOR DA VENDA (bruto)
+  descontos           Decimal?  @db.Decimal(15, 2)  // DESCONTOS (taxa cobrada, negativo)
+  parcelasInfo        String?   // "1 de 1", "2 de 12", etc.
+
+  // Confronto com extrato bancário (Fluxo 3 — Fase seguinte)
+  // PENDENTE | CONCILIADO | SEM_BANCO | SEM_ADQ
+  statusConc          String    @default("PENDENTE")
+
+  @@index([loteId])
+  @@index([dataVencimento])
+  @@index([nsu])
+  @@index([gateway, bandeira, modalidade])
+  @@index([tipoLancamento])
+}
+
+// ── Biblioteca de Padrões OFX ─────────────────────────────────────
+
+model OfxPadrao {
+  id         Int      @id @default(autoincrement())
+  // Texto a procurar no MEMO/NAME do lançamento (case-insensitive contains)
+  texto      String
+  // PIX | CARTAO | TARIFA | TRANSFERENCIA | OUTRO | IGNORAR
+  tipo       String
+  // MASTER | ELO | VISA | AMEX | HIPERCARD | CABAL | OUTROS — null se não cartão ou bandeira indefinida
+  bandeira   String?
+  // SICOOB | SICREDI | BB | ITAU | BRADESCO | SANTANDER | CAIXA | NUBANK | INTER — null = vale para todos
+  banco      String?
+  // Maior = avaliado primeiro; padrões específicos devem ter prioridade maior
+  prioridade Int      @default(0)
+  ativo      Boolean  @default(true)
+  // MANUAL = criado pelo usuário | APRENDIDO = sugerido pelo sistema após classificação manual
+  origem     String   @default("MANUAL")
+  criadoEm  DateTime @default(now())
+
+  @@unique([texto, banco])
+  @@index([tipo])
+  @@index([ativo, prioridade])
+}
+
+// ── SITEF ─────────────────────────────────────────────────────────
+
+model SitefLote {
+  id           String           @id @default(cuid())
+  arquivo      String
+  importadoEm  DateTime         @default(now())
+  importadoPor String?
+  importador   User?            @relation(fields: [importadoPor], references: [id], onDelete: SetNull)
+  adicionadas  Int              @default(0)
+  ignoradas    Int              @default(0)
+  transacoes   SitefTransacao[]
+}
+
+model SitefTransacao {
+  // R22 — Chave de idempotência: nsu::pdv::codigoLoja::rede::dataDia
+  idempotencyKey     String    @id
+  loteId             String
+  lote               SitefLote @relation(fields: [loteId], references: [id], onDelete: Restrict)
+
+  dataTrans          String
+  dataDia            String
+  dataFiscal         String
+  codigoLoja         String
+  cartao             String
+  pdv                String
+  nsu                String
+  nsuHost            String
+  valor              Decimal   @db.Decimal(15, 2)
+  valorSaque         Decimal   @db.Decimal(15, 2)
+  rede               String
+  tipoProduto        String
+  tipoProdutoRaw     String
+  autorizacao        String
+  estabelecimento    String
+  modoEntrada        String
+  produto            String
+  descricaoTransacao String
+  nrParcelas         Int       @default(1)
+  estadoTransacao    String
+  estadoTransacaoRaw String
+  operador           String
+  terminalLogico     String
+  codSitef           String
+  cupomFiscal        String
+
+  @@index([dataDia])
+  @@index([estadoTransacao])
+  @@index([codigoLoja])
+  @@index([loteId])
+}
+
+// ── Configurações da Empresa & Integração ERP ────────────────────
+
+model EmpresaConfig {
+  id                String    @id @default("default")
+  razaoSocial       String    @default("Cliente Piloto LTDA")
+  nomeFantasia      String    @default("Cliente Piloto")
+  cnpj              String    @default("")
+  inscricaoEstadual String?
+  telefone          String?
+  email             String?
+  cidade            String?
+  uf                String?
+  logomarca         String?   @db.Text // Base64 data URL ou link da imagem
+
+  // Conexão externa com o banco do ERP (VRMaster / PostgreSQL)
+  erpSoftware       String    @default("VRSOFTWARE") // VRSOFTWARE | PROTHEUS | LINX | SANKHYA | WINTHOR | OUTRO
+  erpTipoIntegracao String    @default("BANCO")      // BANCO | PLANILHA
+  erpTipo           String    @default("POSTGRESQL")
+  erpHost           String?
+  erpPorta          Int       @default(5432)
+  erpDatabase       String?
+  erpUsuario        String?
+  erpSenha          String?
+  erpSsl            Boolean   @default(false)
+  erpAtivo          Boolean   @default(false)
+  erpUltimoTeste    DateTime?
+  erpStatus         String?   // "CONECTADO" | "ERRO" | "PENDENTE"
+  erpMensagem       String?   @db.Text
+
+  atualizadoEm      DateTime  @updatedAt
+  criadoEm          DateTime  @default(now())
+}
+
+// ── Conexão SFTP & Agendador Diário (Getnet / Outros) ─────────────
+
+model SftpConfig {
+  id                String       @id @default("getnet")
+  provedor          String       @default("GETNET") // GETNET, CIELO, REDE, etc.
+  host              String?
+  porta             Int          @default(22)
+  usuario           String?
+  senha             String?
+  pastaRemota       String       @default("/")
+  pastaLocal        String       @default("storage/sftp/getnet")
+  horarioExecucao   String       @default("05:00") // Formato "HH:MM" para execução diária
+  ativo             Boolean      @default(false)
+  autoProcessar     Boolean      @default(true)
+  ultimoStatus      String?      // "CONECTADO" | "ERRO" | "PENDENTE" | "SUCESSO"
+  ultimoDownload    DateTime?
+  ultimaMensagem    String?      @db.Text
+  atualizadoEm      DateTime     @updatedAt
+  criadoEm          DateTime     @default(now())
+
+  logs              SftpJobLog[]
+}
+
+model SftpJobLog {
+  id                  String     @id @default(cuid())
+  configId            String
+  config              SftpConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  iniciadoEm          DateTime   @default(now())
+  finalizadoEm        DateTime?
+  tipo                String     // "AGENDADO" | "MANUAL"
+  status              String     // "SUCESSO" | "ERRO" | "PARCIAL"
+  arquivosEncontrados Int        @default(0)
+  arquivosBaixados    Int        @default(0)
+  arquivosProcessados Int        @default(0)
+  mensagem            String?    @db.Text
+  detalhes            Json?
+
+  @@index([configId, iniciadoEm])
+}
+

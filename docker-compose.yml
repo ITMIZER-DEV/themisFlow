@@ -1,0 +1,121 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ThemisFlow — docker-compose.yml
+#
+# Pré-requisito: o stack Traefik deve estar rodando (docker/traefik/).
+#
+# No Portainer: Stacks > Add Stack > Web Editor
+#   Cole este arquivo e preencha as variáveis abaixo.
+#
+# VARIÁVEIS OBRIGATÓRIAS:
+#   THEMIS_DOMAIN      Domínio do cliente (ex: themisflow.empresa.com.br)
+#                      O cliente deve apontar um registro A (ou CNAME) para
+#                      o IP deste servidor.
+#
+#   POSTGRES_PASSWORD  Senha do banco de dados. Use uma senha forte!
+#
+#   JWT_SECRET         Segredo JWT. Gere com: openssl rand -hex 32
+#
+#   POSTGRES_PORT      Porta externa do PostgreSQL (ex: 5432)
+#                      Use para acessar via DBeaver/pgAdmin externamente.
+#
+# VARIÁVEIS OPCIONAIS:
+#   POSTGRES_USER        (default: itmizer)
+#   ADMIN_EMAIL          E-mail do primeiro administrador (default: admin@itmizer.com.br)
+#   ADMIN_SENHA          Senha do admin — ALTERE ANTES DE SUBIR! (default: Mudar@123)
+#   TRAEFIK_NETWORK      Nome da rede do Traefik (default: traefik_public)
+#   TRAEFIK_CERTRESOLVER Nome do cert resolver do Traefik (default: letsencrypt)
+# ──────────────────────────────────────────────────────────────────────────────
+
+networks:
+  # Rede interna — apenas os containers deste stack se comunicam
+  themisflow_int:
+    driver: bridge
+    internal: true
+
+  # Rede do Traefik — deve existir (criada pelo stack Traefik)
+  traefik_public:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik_public}
+
+volumes:
+  pgdata:
+    driver: local
+
+services:
+  # ── 1. Banco de dados PostgreSQL ──────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: themisflow-db
+    restart: unless-stopped
+    networks:
+      - themisflow_int
+    environment:
+      POSTGRES_DB: themisflow
+      POSTGRES_USER: ${POSTGRES_USER:-itmizer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD é obrigatório}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Porta externa para acesso via DBeaver/pgAdmin
+    ports:
+      - "${POSTGRES_PORT:?POSTGRES_PORT é obrigatório (ex: 5432)}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-itmizer} -d themisflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  # ── 2. API Fastify ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .              # raiz do monorepo (packages/core precisa estar acessível)
+      dockerfile: apps/api/Dockerfile
+      target: prod
+    image: themisflow-api:latest
+    container_name: themisflow-api
+    restart: unless-stopped
+    networks:
+      - themisflow_int
+      - traefik_public
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-itmizer}:${POSTGRES_PASSWORD}@db:5432/themisflow
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET é obrigatório}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@itmizer.com.br}
+      ADMIN_SENHA: ${ADMIN_SENHA:-Mudar@123}
+      NODE_ENV: production
+      CORS_ORIGIN: https://${THEMIS_DOMAIN:?THEMIS_DOMAIN é obrigatório}
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik_public}"
+      # HTTPS: /api/* → api:3001
+      - "traefik.http.routers.themisflow-api.rule=Host(`${THEMIS_DOMAIN}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.themisflow-api.entrypoints=websecure"
+      - "traefik.http.routers.themisflow-api.tls=true"
+      - "traefik.http.routers.themisflow-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.themisflow-api.loadbalancer.server.port=3001"
+
+  # ── 3. Frontend Web (Nginx + Vite build) ──────────────────────────────────
+  web:
+    build:
+      context: .           # raiz do monorepo (packages/core precisa estar acessível)
+      dockerfile: apps/web/Dockerfile
+    image: themisflow-web:latest
+    container_name: themisflow-web
+    restart: unless-stopped
+    networks:
+      - themisflow_int
+      - traefik_public
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik_public}"
+      # HTTPS: /* → web:80
+      - "traefik.http.routers.themisflow-web.rule=Host(`${THEMIS_DOMAIN}`)"
+      - "traefik.http.routers.themisflow-web.entrypoints=websecure"
+      - "traefik.http.routers.themisflow-web.tls=true"
+      - "traefik.http.routers.themisflow-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.themisflow-web.loadbalancer.server.port=80"

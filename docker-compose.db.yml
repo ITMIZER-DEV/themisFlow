@@ -1,0 +1,48 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ThemisFlow — docker-compose.db.yml
+# PostgreSQL isolado para desenvolvimento e validação local.
+#
+# Uso:
+#   docker compose -f docker-compose.db.yml up -d
+#   docker compose -f docker-compose.db.yml down          # para sem apagar dados
+#   docker compose -f docker-compose.db.yml down -v       # para E apaga volume
+#
+# Depois de subir o banco:
+#   npm run db:migrate -w apps/api    → aplica migrations
+#   npm run db:seed    -w apps/api    → seed inicial (admin + permissões + menu)
+#   npm run dev:api                   → sobe a API localmente (hot-reload)
+# ──────────────────────────────────────────────────────────────────────────────
+
+networks:
+  # Rede interna isolada — só os containers deste arquivo se enxergam
+  themisflow_db:
+    driver: bridge
+
+volumes:
+  pgdata_dev:
+    driver: local
+
+services:
+  db:
+    image: postgres:18
+    container_name: themisflow-db-dev
+    restart: unless-stopped
+    networks:
+      - themisflow_db
+    shm_size: "256mb"
+    environment:
+      POSTGRES_DB:       themisflow
+      POSTGRES_USER:     ${POSTGRES_USER:-itmizer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+    volumes:
+      # CRITICAL: PostgreSQL 18+ usa /var/lib/postgresql (sem /data)
+      - pgdata_dev:/var/lib/postgresql
+    ports:
+      # 5433 no host → 5432 no container (evita conflito com PostgreSQL local do Windows)
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-itmizer} -d themisflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s

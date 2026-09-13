@@ -1,0 +1,104 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# ThemisFlow — docker-compose.portainer-mvp.yml
+# MVP para um único cliente — sem Traefik, acesso direto por porta.
+#
+# ── COMO USAR NO PORTAINER ──────────────────────────────────────────────────
+#
+# OPÇÃO A — Portainer com acesso ao código-fonte (repositório Git ou pasta):
+#   O Portainer irá fazer o build das imagens automaticamente.
+#
+# OPÇÃO B — Usar imagens já construídas localmente (recomendado para MVP):
+#   1. No servidor onde está o código-fonte, rode:
+#        docker compose -f docker-compose.portainer-mvp.yml build
+#        docker compose -f docker-compose.portainer-mvp.yml push   (se usar registry)
+#      OU
+#        docker save themisflow-api:mvp themisflow-web:mvp | gzip > themisflow-mvp.tar.gz
+#        # Copie o .tar.gz para o servidor do cliente
+#        docker load < themisflow-mvp.tar.gz
+#   2. No Portainer, cole este arquivo com as seções "build:" comentadas.
+#
+# ── ACESSO APÓS DEPLOY ───────────────────────────────────────────────────────
+#   Sistema:   http://<IP-DO-SERVIDOR>
+#   pgAdmin:   host=<IP-DO-SERVIDOR> porta=5432 banco=themisflow user=itmizer
+#
+# ── CREDENCIAIS DO ADMINISTRADOR ─────────────────────────────────────────────
+#   E-mail:  admin@themisflow.local
+#   Senha:   ThemisFlow@2026
+#   ⚠️  Troque a senha no primeiro acesso em: /admin/usuarios
+# ══════════════════════════════════════════════════════════════════════════════
+
+networks:
+  themisflow:
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: themisflow_pgdata   # nome explícito para fácil identificação no Portainer
+
+services:
+
+  # ── 1. Banco de dados PostgreSQL ───────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: themisflow-db
+    restart: unless-stopped
+    networks: [themisflow]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-themisflow}
+      POSTGRES_USER: ${POSTGRES_USER:-itmizer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Th3m1s_DB_2026!}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"      # acesso externo via DBeaver / pgAdmin
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-itmizer} -d $${POSTGRES_DB:-themisflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  # ── 2. API Fastify (backend) ───────────────────────────────────────────────
+  api:
+    # Descomente "build:" se o Portainer tiver acesso ao código-fonte:
+    build:
+      context: .                    # raiz do monorepo (packages/core precisa estar acessível)
+      dockerfile: apps/api/Dockerfile
+      target: prod
+    image: themisflow-api:mvp
+    container_name: themisflow-api
+    restart: unless-stopped
+    networks: [themisflow]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-itmizer}:${POSTGRES_PASSWORD:-Th3m1s_DB_2026!}@db:5432/${POSTGRES_DB:-themisflow}
+      JWT_SECRET: ${JWT_SECRET:-7f2c1b9e4a8d3f6c0e5b2a9d1f8c7e4b3a6d9f2c1b8e5a3d7f0c4b2e9a1d6c}
+      # ── Dados do Cliente Piloto e Usuários Iniciais (Seed) ───────────
+      PILOT_CLIENT_NAME: ${PILOT_CLIENT_NAME:-Cliente Piloto}
+      ADMIN_NOME: ${ADMIN_NOME:-Administrador}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@themisflow.local}
+      ADMIN_SENHA: ${ADMIN_SENHA:-ThemisFlow@2026}
+      OPERADOR_NOME: ${OPERADOR_NOME:-Operador Financeiro}
+      OPERADOR_EMAIL: ${OPERADOR_EMAIL:-operador@themisflow.local}
+      OPERADOR_SENHA: ${OPERADOR_SENHA:-Operador@2026}
+      # ──────────────────────────────────────────────────────────────────
+      NODE_ENV: production
+      CORS_ORIGIN: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Sem porta exposta — Nginx faz proxy de /api → api:3001 internamente
+
+  # ── 3. Frontend Web (Nginx serve o Vite build) ────────────────────────────
+  web:
+    # Descomente "build:" se o Portainer tiver acesso ao código-fonte:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: themisflow-web:mvp
+    container_name: themisflow-web
+    restart: unless-stopped
+    networks: [themisflow]
+    ports:
+      - "${WEB_PORT:-8098}:80"          # sistema acessível em http://<IP-DO-SERVIDOR>:8098
+    depends_on:
+      - api

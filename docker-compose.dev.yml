@@ -1,0 +1,42 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ThemisFlow — docker-compose.dev.yml (desenvolvimento local)
+#
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up db api
+#
+# Neste modo:
+#   - db e api rodam em Docker
+#   - web roda localmente: npm run dev:web (http://localhost:5173)
+#   - O proxy /api → localhost:3001 está configurado no vite.config.ts
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  api:
+    build:
+      context: .              # raiz do monorepo (packages/core precisa estar acessível)
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    command: sh -c "npx prisma generate && npm run dev"
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-itmizer}:${POSTGRES_PASSWORD}@db:5432/themisflow
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@itmizer.com.br}
+      ADMIN_SENHA: ${ADMIN_SENHA:-Mudar@123}
+      NODE_ENV: development
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      TENANT_SLUG: dev
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./apps/api/prisma:/app/apps/api/prisma
+
+  # Em dev, o web roda localmente: npm run dev:web
+  # O container web (Nginx) só é usado em produção via docker-compose.yml
+  web:
+    profiles:
+      - prod-only
+
+  db:
+    # Expõe o banco localmente para Prisma Studio e DBeaver
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"

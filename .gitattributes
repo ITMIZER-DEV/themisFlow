@@ -1,0 +1,15 @@
+# Garante line endings corretos independente do OS do desenvolvedor
+# Windows usa CRLF mas containers Linux precisam de LF nos scripts shell
+
+* text=auto
+
+# Scripts shell sempre com LF (Linux containers)
+*.sh text eol=lf
+
+# Configs que precisam de LF
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+nginx.conf text eol=lf
+.env.example text eol=lf
+entrypoint.sh text eol=lf

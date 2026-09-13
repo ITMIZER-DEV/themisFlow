@@ -1,0 +1,21 @@
+{
+  "name": "themisflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test:golden": "node --test reference/fixtures/*.test.mjs",
+    "test": "npm run test -w packages/core",
+    "test:api": "npm run test -w apps/api",
+    "build": "npm run build -w apps/web",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web"
+  },
+  "devDependencies": {
+    "xlsx": "0.18.5"
+  }
+}

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ThemisFlow — Mockup Composição N:1</title>
+<style>
+  :root {
+    --bg:         #0d0f14;
+    --panel:      #141720;
+    --panel-alt:  #1a1e2b;
+    --border:     #252a3a;
+    --teal:       #2dd4bf;
+    --teal-bg:    rgba(45,212,191,.08);
+    --gold:       #f59e0b;
+    --gold-bg:    rgba(245,158,11,.08);
+    --red:        #f87171;
+    --muted:      #64748b;
+    --text:       #e2e8f0;
+    --text-soft:  #94a3b8;
+    --radius:     8px;
+    --radius-sm:  5px;
+    --font-mono:  'JetBrains Mono', 'Fira Mono', monospace;
+    --font-title: 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-title);
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 8px 18px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    transition: color .15s;
+  }
+  .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+  .tab-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 1px 7px; border-radius: 9999px; font-size: 0.65rem;
+    font-weight: 700; margin-left: 6px; font-family: var(--font-mono);
+  }
+  .badge-teal { background: var(--teal-bg); color: var(--teal); }
+  .badge-gold { background: var(--gold-bg); color: var(--gold); }
+  .badge-warn { background: rgba(248,113,113,.12); color: var(--red); }
+  .badge-ok   { background: rgba(45,212,191,.12); color: var(--teal); }
+
+  /* ── Section header ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 0 10px;
+    margin-bottom: 8px;
+  }
+  .section-title { font-size: 0.75rem; font-weight: 700; color: var(--text-soft); letter-spacing: .06em; text-transform: uppercase; }
+
+  /* ── Controls bar ── */
+  .controls {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .controls label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+  select {
+    background: var(--panel-alt); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-family: var(--font-mono); font-size: 0.75rem;
+    padding: 3px 8px; cursor: pointer;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: var(--radius-sm);
+    font-size: 0.75rem; font-weight: 600; cursor: pointer; border: none;
+    transition: opacity .15s;
+  }
+  .btn-ghost { background: var(--panel-alt); color: var(--text-soft); border: 1px solid var(--border); }
+  .btn-teal  { background: var(--teal); color: #0d0f14; }
+  .btn-teal:hover { opacity: .88; }
+  .divider { width: 1px; height: 18px; background: var(--border); }
+
+  /* ── Transactions sections ── */
+  .trn-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .trn-section-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-alt);
+  }
+  .trn-section-title { font-size: 0.78rem; font-weight: 700; }
+  .hint { padding: 7px 14px; font-size: 0.72rem; color: var(--muted); font-style: italic; border-bottom: 1px solid var(--border); }
+
+  /* ── Groups ── */
+  .group-wrap { padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .group-card {
+    border: 1px solid var(--teal);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .group-bank-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: var(--teal-bg);
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-bank-date { font-family: var(--font-mono); font-size: 0.72rem; color: var(--teal); min-width: 36px; }
+  .group-bank-label { flex: 1; font-size: 0.78rem; color: var(--teal); font-weight: 700; }
+  .group-bank-amt { font-family: var(--font-mono); font-size: 0.8rem; color: var(--teal); font-weight: 800; }
+  .group-bank-meta { font-size: 0.65rem; color: var(--muted); padding-left: 10px; white-space: nowrap; }
+  .group-chevron { font-size: 0.65rem; color: var(--teal); opacity: .7; }
+
+  table.sys-items { width: 100%; border-collapse: collapse; }
+  table.sys-items td { padding: 5px 12px; font-size: 0.73rem; border-bottom: 1px solid rgba(37,42,58,.5); }
+  table.sys-items tr:last-child td { border-bottom: none; }
+  table.sys-items tr:hover { background: rgba(255,255,255,.02); }
+  .sys-date  { font-family: var(--font-mono); width: 40px; color: var(--text-soft); }
+  .sys-desc  { color: var(--gold); }
+  .sys-amt   { font-family: var(--font-mono); text-align: right; color: var(--gold); font-weight: 600; white-space: nowrap; }
+  .sys-delta { width: 42px; text-align: center; font-family: var(--font-mono); font-size: 0.67rem; }
+  .delta-ok   { color: var(--teal); }
+  .delta-late { color: var(--gold); }
+  .sum-row td { border-top: 1px solid var(--border) !important; background: rgba(45,212,191,.04); }
+  .sum-label { text-align: right; color: var(--muted); font-size: 0.68rem; }
+  .sum-val   { font-family: var(--font-mono); text-align: right; font-weight: 800; color: var(--teal); font-size: 0.78rem; }
+
+  /* ── Pairs table ── */
+  table.pairs { width: 100%; border-collapse: collapse; }
+  table.pairs th {
+    padding: 6px 10px; text-align: left;
+    font-size: 0.65rem; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .05em;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-alt);
+  }
+  table.pairs td { padding: 5px 10px; font-size: 0.73rem; border-bottom: 1px solid rgba(37,42,58,.5); }
+  table.pairs tr:last-child td { border-bottom: none; }
+  table.pairs .mono { font-family: var(--font-mono); }
+  table.pairs .right { text-align: right; }
+  .c-teal { color: var(--teal); }
+  .c-red  { color: var(--red); }
+
+  /* ── Empty message ── */
+  .empty-msg {
+    padding: 10px 14px; font-size: 0.75rem; color: var(--teal);
+    display: flex; align-items: center; gap: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div style="max-width:860px; margin:0 auto;">
+
+  <!-- Título -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+    <div>
+      <h1 style="font-size:1rem; font-weight:800; font-family:var(--font-title); letter-spacing:.04em;">
+        ThemisFlow
+        <span style="font-size:0.65rem; font-weight:400; color:var(--muted); margin-left:6px;">ITMIZER Conciliação</span>
+      </h1>
+    </div>
+    <span style="font-size:0.68rem; color:var(--muted);">mockup · feature N:1</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab">Banco <span class="tab-badge badge-teal">4</span></button>
+    <button class="tab">Sistema <span class="tab-badge badge-gold">4</span></button>
+    <button class="tab active">Comparativo <span class="tab-badge badge-warn">0</span></button>
+  </div>
+
+  <!-- Cabeçalho do Comparativo -->
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+    <div>
+      <h2 style="font-size:0.95rem; font-weight:800;">Comparativo Banco × Sistema</h2>
+      <div style="font-size:0.72rem; color:var(--muted); margin-top:3px;">
+        Banco: 0341 · Cc 12345-6 &nbsp;·&nbsp; Sistema: extrato-junho.xls
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span class="tab-badge badge-ok" style="padding:4px 10px; font-size:0.75rem;">✓ Conciliado</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <label style="font-size:0.72rem;color:var(--muted);">Tolerância:</label>
+        <select><option>0 dias (exato)</option><option>1 dia</option></select>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <label style="font-size:0.72rem;color:var(--muted);">Composição N:1:</label>
+        <select><option>OFF</option><option selected>3</option><option>5</option><option>10</option></select>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <label style="font-size:0.72rem;color:var(--muted);">Janela:</label>
+        <select><option>1 dia</option><option selected>7 dias</option><option>14 dias</option></select>
+      </div>
+      <button class="btn btn-teal">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Marcar casados (4)
+      </button>
+      <button class="btn btn-ghost">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        CSV
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── Só no banco ─────────────────────────────────────────────── -->
+  <div class="section-header">
+    <span style="font-size:0.8rem;font-weight:600;color:var(--teal);">Só no banco</span>
+    <span class="tab-badge badge-teal">0</span>
+  </div>
+  <div class="trn-section" style="margin-bottom:14px;">
+    <div class="empty-msg">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Nenhum lançamento só no banco
+    </div>
+  </div>
+
+  <!-- ─── Só no sistema ───────────────────────────────────────────── -->
+  <div class="section-header" style="margin-top:8px;">
+    <span style="font-size:0.8rem;font-weight:600;color:var(--gold);">Só no sistema</span>
+    <span class="tab-badge badge-gold">0</span>
+  </div>
+  <div class="trn-section" style="margin-bottom:14px;">
+    <div class="empty-msg">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Nenhum lançamento só no sistema
+    </div>
+  </div>
+
+  <!-- ─── Composições N:1 ─────────────────────────────────────────── -->
+  <div class="section-header" style="margin-top:8px;">
+    <span style="font-size:0.8rem;font-weight:600;color:var(--teal);">⊕ Composições N:1</span>
+    <span class="tab-badge badge-teal">2</span>
+  </div>
+  <div class="trn-section" style="margin-bottom:14px;">
+    <div class="trn-section-head">
+      <span class="trn-section-title" style="color:var(--teal);">⊕ Composições N:1</span>
+      <span class="tab-badge badge-teal">2</span>
+    </div>
+    <div class="hint">Vários lançamentos sistema compõem um único crédito no banco</div>
+
+    <div class="group-wrap">
+
+      <!-- Grupo 1 — EXPANDIDO -->
+      <div class="group-card">
+        <div class="group-bank-row" onclick="toggle(this)">
+          <span class="group-chevron">▼</span>
+          <span class="group-bank-date">02/06</span>
+          <span class="group-bank-label">REPASSE CIELO — CRÉDITO CARTÃO</span>
+          <span class="group-bank-amt">R$ 1.500,00</span>
+          <span class="group-bank-meta">3 itens</span>
+        </div>
+        <div class="group-body">
+          <table class="sys-items">
+            <tbody>
+              <tr>
+                <td class="sys-date">01/06</td>
+                <td class="sys-desc">Venda PDV 001 — Crédito Visa</td>
+                <td class="sys-amt">R$ 600,00</td>
+                <td class="sys-delta"><span class="delta-late">Δ1d</span></td>
+              </tr>
+              <tr>
+                <td class="sys-date">01/06</td>
+                <td class="sys-desc">Venda PDV 002 — Crédito Mastercard</td>
+                <td class="sys-amt">R$ 500,00</td>
+                <td class="sys-delta"><span class="delta-late">Δ1d</span></td>
+              </tr>
+              <tr>
+                <td class="sys-date">02/06</td>
+                <td class="sys-desc">Venda PDV 003 — Crédito Elo</td>
+                <td class="sys-amt">R$ 400,00</td>
+                <td class="sys-delta"><span class="delta-ok">✓</span></td>
+              </tr>
+              <tr class="sum-row">
+                <td colspan="2" class="sum-label">Soma sistema</td>
+                <td class="sum-val">R$ 1.500,00</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Grupo 2 — EXPANDIDO -->
+      <div class="group-card">
+        <div class="group-bank-row" onclick="toggle(this)">
+          <span class="group-chevron">▼</span>
+          <span class="group-bank-date">05/06</span>
+          <span class="group-bank-label">REPASSE GETNET — DÉBITO</span>
+          <span class="group-bank-amt">R$ 320,55</span>
+          <span class="group-bank-meta">2 itens</span>
+        </div>
+        <div class="group-body">
+          <table class="sys-items">
+            <tbody>
+              <tr>
+                <td class="sys-date">04/06</td>
+                <td class="sys-desc">Venda PDV 004 — Débito Visa</td>
+                <td class="sys-amt">R$ 200,00</td>
+                <td class="sys-delta"><span class="delta-late">Δ1d</span></td>
+              </tr>
+              <tr>
+                <td class="sys-date">05/06</td>
+                <td class="sys-desc">Venda PDV 005 — Débito Mastercard</td>
+                <td class="sys-amt">R$ 120,55</td>
+                <td class="sys-delta"><span class="delta-ok">✓</span></td>
+              </tr>
+              <tr class="sum-row">
+                <td colspan="2" class="sum-label">Soma sistema</td>
+                <td class="sum-val">R$ 320,55</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Grupo 3 — RECOLHIDO -->
+      <div class="group-card" style="opacity:.85;">
+        <div class="group-bank-row" onclick="toggle(this)" style="cursor:pointer;">
+          <span class="group-chevron">▶</span>
+          <span class="group-bank-date">05/06</span>
+          <span class="group-bank-label">REPASSE STONE — CRÉDITO</span>
+          <span class="group-bank-amt" style="color:var(--teal);">R$ 248,90</span>
+          <span class="group-bank-meta">2 itens · clique para expandir</span>
+        </div>
+        <!-- body recolhido: display:none -->
+        <div class="group-body" style="display:none;">
+          <table class="sys-items">
+            <tbody>
+              <tr>
+                <td class="sys-date">05/06</td>
+                <td class="sys-desc">Venda PDV 006</td>
+                <td class="sys-amt">R$ 148,90</td>
+                <td class="sys-delta"><span class="delta-ok">✓</span></td>
+              </tr>
+              <tr>
+                <td class="sys-date">05/06</td>
+                <td class="sys-desc">Venda PDV 007</td>
+                <td class="sys-amt">R$ 100,00</td>
+                <td class="sys-delta"><span class="delta-ok">✓</span></td>
+              </tr>
+              <tr class="sum-row">
+                <td colspan="2" class="sum-label">Soma sistema</td>
+                <td class="sum-val">R$ 248,90</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /group-wrap -->
+  </div>
+
+  <!-- ─── Pares casados ────────────────────────────────────────────── -->
+  <div class="section-header" style="margin-top:8px;">
+    <span style="font-size:0.8rem;font-weight:600;color:var(--teal);">Pares casados</span>
+    <span class="tab-badge badge-teal">1</span>
+  </div>
+  <div class="trn-section">
+    <table class="pairs">
+      <thead>
+        <tr>
+          <th>Data Sist.</th>
+          <th>Descrição (sistema)</th>
+          <th class="right">Valor</th>
+          <th>Data Banco</th>
+          <th>Memo (banco)</th>
+          <th style="text-align:center;">Δ dias</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono" style="color:var(--text-soft);">03/06</td>
+          <td>Pagamento fornecedor XYZ</td>
+          <td class="mono right c-red">−R$ 1.200,00</td>
+          <td class="mono" style="color:var(--text-soft);">03/06</td>
+          <td style="color:var(--muted); font-size:0.7rem;">TED SAÍDA — FORNECEDOR XYZ</td>
+          <td style="text-align:center;font-family:var(--font-mono);font-size:0.7rem;">
+            <span class="c-teal">✓</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  function toggle(row) {
+    const body = row.nextElementSibling;
+    const chevron = row.querySelector('.group-chevron');
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : '';
+    chevron.textContent = isOpen ? '▶' : '▼';
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# ── Node modules (rebuilt dentro do container) ─────────────────────────────
+**/node_modules
+**/.npm
+
+# ── Build outputs ───────────────────────────────────────────────────────────
+**/dist
+**/.tsbuildinfo
+
+# ── Dev tools ───────────────────────────────────────────────────────────────
+**/.git
+**/.gitignore
+**/.gitattributes
+**/.vscode
+**/.idea
+**/.DS_Store
+
+# ── Logs ───────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── Docker files (não necessário dentro do container) ──────────────────────
+**/Dockerfile
+**/.dockerignore
+docker-compose*.yml
+docker/
+
+# ── Docs / config de dev ───────────────────────────────────────────────────
+*.md
+reference/
+INSTALACAO.md
+deploy-mvp.html
+
+# ── Env files (nunca incluir no build context) ─────────────────────────────
+.env
+.env.*
+!.env.example

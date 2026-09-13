@@ -1,0 +1,86 @@
+# ==============================================================================
+# ThemisFlow — .gitignore
+# ==============================================================================
+
+# Dependências
+node_modules/
+.pnpm-store/
+
+# Builds e Bundlers
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+.output/
+.vite/
+coverage/
+.nyc_output/
+
+# Variáveis de Ambiente e Segredos (NUNCA commitar segredos no git)
+.env
+.env.*
+.env*.local
+*.env
+!.env.example
+!.env.pilot.example
+apps/api/.env
+*.pem
+*.key
+*.cert
+
+# Bancos de dados locais, DuckDB e arquivos transitórios
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Armazenamento em runtime / SFTP downloads / Uploads temporários
+/storage/
+/apps/api/storage/*
+!/apps/api/storage/.gitkeep
+
+# Arquivos reais de clientes e extratos (NUNCA commitar dados de clientes/produção)
+*.ofx
+*.xls
+*.xlsx
+*.csv
+docs/conciliacao/getnet/extratos/
+docs/getnet/
+docs/pluxee/
+docs/sitef/
+
+# Exceções: Fixtures mock/fictícias de testes automatizados
+!reference/fixtures/banco-teste.ofx
+!reference/fixtures/extrato-sistema-sintetico.xls
+
+# Pacotes e imagens de deploy pesados (gerados pelos scripts de build)
+*.tar
+*.tar.gz
+*.zip
+*.7z
+*.rar
+themisflow-mvp-images.tar
+themisflow-deploy-pilot.zip
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDEs e Ferramentas Locais
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.claude/
+*.local
+*.local.*
+*.swp
+*.swo
