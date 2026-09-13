@@ -81,7 +81,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-itmizer}:${POSTGRES_PASSWORD}@db:5432/themisflow
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET é obrigatório}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@itmizer.com.br}
-      ADMIN_SENHA: ${ADMIN_SENHA:-Mudar@123}
+      ADMIN_SENHA: ${ADMIN_SENHA:-ThemisFlow@2026}
       NODE_ENV: production
       CORS_ORIGIN: https://${THEMIS_DOMAIN:?THEMIS_DOMAIN é obrigatório}
     depends_on:

@@ -75,11 +75,11 @@ services:
       # ── Dados do Cliente Piloto e Usuários Iniciais (Seed) ───────────
       PILOT_CLIENT_NAME: ${PILOT_CLIENT_NAME:-Cliente Piloto}
       ADMIN_NOME: ${ADMIN_NOME:-Administrador}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@themisflow.local}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@itmizer.com.br}
       ADMIN_SENHA: ${ADMIN_SENHA:-ThemisFlow@2026}
       OPERADOR_NOME: ${OPERADOR_NOME:-Operador Financeiro}
-      OPERADOR_EMAIL: ${OPERADOR_EMAIL:-operador@themisflow.local}
-      OPERADOR_SENHA: ${OPERADOR_SENHA:-Operador@2026}
+      OPERADOR_EMAIL: ${OPERADOR_EMAIL:-operador@itmizer.com.br}
+      OPERADOR_SENHA: ${OPERADOR_SENHA:-ThemisFlow@2026}
       # ──────────────────────────────────────────────────────────────────
       NODE_ENV: production
       CORS_ORIGIN: "*"

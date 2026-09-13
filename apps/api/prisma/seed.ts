@@ -140,38 +140,44 @@ async function main() {
   const pilotName     = process.env.PILOT_CLIENT_NAME ?? 'Cliente Piloto';
   const adminNome     = process.env.ADMIN_NOME ?? `Administrador (${pilotName})`;
   const adminEmail    = process.env.ADMIN_EMAIL ?? 'admin@itmizer.com.br';
-  const adminSenha    = process.env.ADMIN_SENHA ?? 'admin123';
+  const adminSenha    = process.env.ADMIN_SENHA ?? 'ThemisFlow@2026';
   const hashAdmin     = await bcrypt.hash(adminSenha, 12);
 
-  const adminUser = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: { nome: adminNome },
-    create: { nome: adminNome, email: adminEmail, senha: hashAdmin },
-  });
+  const adminEmails = Array.from(new Set([adminEmail, 'admin@itmizer.com.br', 'admin@themisflow.local']));
+  for (const email of adminEmails) {
+    const adminUser = await prisma.user.upsert({
+      where: { email },
+      update: { nome: adminNome, senha: hashAdmin, ativo: true },
+      create: { nome: adminNome, email, senha: hashAdmin, ativo: true },
+    });
 
-  await prisma.userRole.upsert({
-    where: { userId_roleId: { userId: adminUser.id, roleId: roleAdmin.id } },
-    update: {},
-    create: { userId: adminUser.id, roleId: roleAdmin.id },
-  });
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: adminUser.id, roleId: roleAdmin.id } },
+      update: {},
+      create: { userId: adminUser.id, roleId: roleAdmin.id },
+    });
+  }
 
   // ── Usuário operador do Cliente Piloto ───────────────────────────
   const operadorEmail = process.env.OPERADOR_EMAIL ?? 'operador@itmizer.com.br';
-  const operadorSenha = process.env.OPERADOR_SENHA ?? 'operador123';
+  const operadorSenha = process.env.OPERADOR_SENHA ?? 'ThemisFlow@2026';
   const operadorNome  = process.env.OPERADOR_NOME ?? `Operador Financeiro (${pilotName})`;
   const hashOperador  = await bcrypt.hash(operadorSenha, 12);
 
-  const operadorUser = await prisma.user.upsert({
-    where: { email: operadorEmail },
-    update: { nome: operadorNome },
-    create: { nome: operadorNome, email: operadorEmail, senha: hashOperador },
-  });
+  const operadorEmails = Array.from(new Set([operadorEmail, 'operador@itmizer.com.br', 'operador@themisflow.local']));
+  for (const email of operadorEmails) {
+    const operadorUser = await prisma.user.upsert({
+      where: { email },
+      update: { nome: operadorNome, senha: hashOperador, ativo: true },
+      create: { nome: operadorNome, email, senha: hashOperador, ativo: true },
+    });
 
-  await prisma.userRole.upsert({
-    where: { userId_roleId: { userId: operadorUser.id, roleId: roleOperador.id } },
-    update: {},
-    create: { userId: operadorUser.id, roleId: roleOperador.id },
-  });
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: operadorUser.id, roleId: roleOperador.id } },
+      update: {},
+      create: { userId: operadorUser.id, roleId: roleOperador.id },
+    });
+  }
 
   // ── Contrato Inicial de Taxas (Piloto Getnet / Adquirente) ────────
   const nomeContrato = `Contrato Piloto Getnet — ${pilotName}`;

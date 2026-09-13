@@ -3,12 +3,7 @@
 <div align="center">
 
 ![ThemisFlow Banner](https://img.shields.io/badge/ThemisFlow-ITMIZER-00c9b1?style=for-the-badge&logo=shield)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-18.3-61dafb?style=for-the-badge&logo=react)](https://reactjs.org/)
-[![Fastify](https://img.shields.io/badge/Fastify-5.2-black?style=for-the-badge&logo=fastify)](https://fastify.dev/)
-[![DuckDB](https://img.shields.io/badge/DuckDB-In--Memory_Engine-fff000?style=for-the-badge&logo=duckdb)](https://duckdb.org/)
-[![Prisma](https://img.shields.io/badge/Prisma-PostgreSQL_16-2D3748?style=for-the-badge&logo=prisma)](https://www.prisma.io/)
-[![Docker](https://img.shields.io/badge/Docker-Portainer_Ready-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
+
 
 **Sistema corporativo de conciliação financeira de alta performance da família ITMIZER.**  
 *Auditoria matemática, conciliação bancária (OFX × ERP), adquirentes de cartão (Getnet EDI, Vouchers), TEF (SiTEF) e previsão de fluxo de recebíveis.*

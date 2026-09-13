@@ -34,8 +34,8 @@ A implantação MVP roda 3 containers isolados em uma rede interna, sem necessid
 ```
 
 ### 🔑 Credenciais Padrão (Primeiro Acesso)
-* **URL do Sistema**: `http://<IP-DO-SERVIDOR>`
-* **E-mail do Administrador**: `admin@themisflow.local`
+* **URL do Sistema**: `http://<IP-DO-SERVIDOR>` (ou `:8098`)
+* **E-mail do Administrador**: `admin@itmizer.com.br` (ou `admin@themisflow.local`)
 * **Senha Inicial**: `ThemisFlow@2026`
 * **Banco de Dados**: Porta `5432`, Banco `themisflow`, Usuário `itmizer`, Senha `Th3m1s_DB_2026!`
 
