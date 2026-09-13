@@ -15,6 +15,7 @@ RUN npm ci
 # Copia código-fonte
 COPY packages/core ./packages/core
 COPY apps/web/src ./apps/web/src
+COPY apps/web/public ./apps/web/public
 COPY apps/web/index.html ./apps/web/
 COPY apps/web/vite.config.ts ./apps/web/
 COPY apps/web/tsconfig.json ./apps/web/
