@@ -27,6 +27,34 @@ function parseBRL(v: RawCell): number {
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
+function parseDateBR(v: RawCell): string | null {
+  if (v instanceof Date) {
+    return `${v.getFullYear()}-${pad2(v.getMonth()+1)}-${pad2(v.getDate())}`;
+  }
+  const s = str(v);
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) {
+    return `${m[3]}-${m[2]}-${m[1]}`;
+  }
+  return null;
+}
+
+function parseHourBR(v: RawCell): string {
+  if (v instanceof Date) {
+    return `${pad2(v.getHours())}:${pad2(v.getMinutes())}:${pad2(v.getSeconds())}`;
+  }
+  const s = str(v);
+  const mh = s.match(/^(\d{1,2})h(\d{2})(?:[m:]?(\d{2}))?/i);
+  if (mh) {
+    return `${pad2(Number(mh[1]))}:${mh[2]}:${mh[3] ? mh[3] : '00'}`;
+  }
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    return `${pad2(Number(m[1]))}:${m[2]}:${m[3] ? m[3] : '00'}`;
+  }
+  return '12:00:00';
+}
+
 function parseDatetimeBR(v: RawCell): string | null {
   if (v instanceof Date) {
     return `${v.getFullYear()}-${pad2(v.getMonth()+1)}-${pad2(v.getDate())}T${pad2(v.getHours())}:${pad2(v.getMinutes())}:00`;
@@ -44,6 +72,7 @@ function parseDatetimeBR(v: RawCell): string | null {
   }
   return null;
 }
+
 
 export interface VoucherVenda {
   idempotencyKey:  string;
@@ -269,18 +298,154 @@ export function parseTicketRows(rows: RawCell[][], fname = ''): VoucherResult {
 }
 
 export function parseVrBeneficiosRows(rows: RawCell[][], fname = ''): VoucherResult {
-  return parseVoucherRows(rows, 'VR', fname, {
-    ec: ['estabelecimento', 'ec', 'loja'],
-    cnpj: ['cnpj'],
-    dataVenda: ['data', 'data transacao', 'data/hora'],
-    status: ['status'],
-    nsu: ['nsu', 'comprovante', 'numero'],
-    autorizacao: ['autorizacao', 'aut'],
-    valorBruto: ['valor bruto', 'valor transacao', 'bruto'],
-    valorTaxa: ['taxa', 'comissao', 'valor taxa'],
-    valorLiquido: ['valor liquido', 'liquido', 'receber'],
-  });
+  let hi = -1;
+  const col: Record<string, number> = {};
+
+  // Scan top rows for CNPJ
+  let headerCnpj = '';
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const row = rows[i]!;
+    for (let j = 0; j < row.length; j++) {
+      const cellStr = str(row[j]);
+      if (cellStr.toLowerCase().includes('cnpj')) {
+        if (cellStr.includes(':')) {
+          headerCnpj = cellStr.split(':')[1]!.trim().replace(/[^\d]/g, '');
+        } else if (j + 1 < row.length) {
+          headerCnpj = str(row[j + 1]).replace(/[^\d]/g, '');
+        }
+        break;
+      }
+    }
+    if (headerCnpj) break;
+  }
+
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
+    const row = rows[i]!;
+    const normRow = row.map(c => norm(c));
+
+    const hasData = normRow.some(c => c === 'data' || c.includes('data'));
+    const hasValor = normRow.some(c => c === 'valor' || c.includes('valor'));
+    const hasAutOrNsu = normRow.some(c => c.includes('autorizacao') || c.includes('nsu'));
+
+    if (hasData && hasValor && hasAutOrNsu) {
+      hi = i;
+      row.forEach((c, j) => {
+        const s = norm(c);
+        if (s === 'cnpj') col.cnpj = j;
+        else if (s === 'produto') col.produto = j;
+        else if (s === 'data' || s === 'dt. venda' || s === 'data transacao') col.data = j;
+        else if (s === 'hora' || s === 'horario') col.hora = j;
+        else if (s === 'cartao' || s.includes('cartao')) col.cartao = j;
+        else if (s.includes('autorizacao') || s === 'aut') col.autorizacao = j;
+        else if (s === 'nsu' || s.includes('nsu')) col.nsu = j;
+        else if (s === 'valor' || s === 'valor bruto' || s.includes('bruto')) col.valor = j;
+        else if (s.includes('taxa') || s.includes('comissao')) col.taxa = j;
+        else if (s.includes('liquido')) col.liquido = j;
+        else if (s.includes('estabelecimento') || s === 'ec') col.ec = j;
+      });
+      break;
+    }
+  }
+
+  if (hi < 0 || col.valor == null || col.data == null) {
+    return parseVoucherRows(rows, 'VR', fname, {
+      ec: ['estabelecimento', 'ec', 'loja'],
+      cnpj: ['cnpj'],
+      dataVenda: ['data', 'data transacao', 'data/hora'],
+      status: ['status'],
+      nsu: ['nsu', 'comprovante', 'numero'],
+      autorizacao: ['autorizacao', 'aut', 'numero autorizacao'],
+      valorBruto: ['valor', 'valor bruto', 'valor transacao', 'bruto'],
+      valorTaxa: ['taxa', 'comissao', 'valor taxa'],
+      valorLiquido: ['valor liquido', 'liquido', 'receber'],
+    });
+  }
+
+  const vendas: VoucherVenda[] = [];
+  let ignoradas = 0;
+
+  for (let i = hi + 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.length === 0 || row.every(c => c === '' || c == null)) {
+      ignoradas++;
+      continue;
+    }
+
+    if (row.some(c => str(c).toLowerCase().includes('total'))) {
+      ignoradas++;
+      continue;
+    }
+
+    const bruto = parseBRL(row[col.valor]);
+    if (!bruto) {
+      ignoradas++;
+      continue;
+    }
+
+    const dataDia = parseDateBR(row[col.data]);
+    if (!dataDia) {
+      ignoradas++;
+      continue;
+    }
+
+    const horaStr = col.hora != null ? parseHourBR(row[col.hora]) : '12:00:00';
+    const dataHoraVenda = `${dataDia}T${horaStr}`;
+
+    const aut = col.autorizacao != null ? str(row[col.autorizacao]).trim() : '';
+    let nsu = col.nsu != null ? str(row[col.nsu]).trim() : '';
+    if (!nsu && aut) {
+      nsu = aut.replace(/[^\d]/g, '');
+    }
+    if (!nsu) {
+      ignoradas++;
+      continue;
+    }
+
+    const cnpj = col.cnpj != null ? str(row[col.cnpj]).replace(/[^\d]/g, '') : headerCnpj;
+    const ec = col.ec != null ? str(row[col.ec]).trim() : (cnpj || 'GERAL');
+    const produto = col.produto != null ? str(row[col.produto]).trim() : 'VR Benefícios';
+    const cartao = col.cartao != null ? str(row[col.cartao]).trim() : '';
+
+    const taxaRaw = col.taxa != null ? parseBRL(row[col.taxa]) : 0;
+    const valorTaxa = -Math.abs(taxaRaw);
+    const liquidoRaw = col.liquido != null ? parseBRL(row[col.liquido]) : (bruto + valorTaxa);
+    const valorLiquido = r2(liquidoRaw);
+
+    const idempotencyKey = `VR::${ec}::${nsu}::${dataDia}`;
+
+    vendas.push({
+      idempotencyKey,
+      gateway: 'VR',
+      ec,
+      cnpj,
+      bandeira: 'VR',
+      bandeiraBruta: produto,
+      modalidade: 'VOUCHER',
+      formaPagamento: produto,
+      dataHoraVenda,
+      status: 'APROVADA',
+      parcelas: 1,
+      dataPrimeiroPgto: null,
+      cartaoMascarado: cartao,
+      autorizacao: aut,
+      nsu,
+      terminal: '',
+      meioCaptura: 'TEF',
+      valorBruto: r2(bruto),
+      valorTaxa: r2(valorTaxa),
+      valorLiquido,
+    });
+  }
+
+  return {
+    file: fname,
+    gateway: 'VR',
+    totalLinhas: rows.length,
+    vendas,
+    ignoradas,
+  };
 }
+
 
 export function parseSodexoRecebiveisRows(rows: RawCell[][], fname = ''): any {
   let hi = -1;
@@ -413,16 +578,6 @@ export function parseSodexoRecebiveisRows(rows: RawCell[][], fname = ''): any {
     });
   }
 
-  // Date parsing helper local
-  function parseDateBR(v: RawCell): string | null {
-    if (v instanceof Date) {
-      return `${v.getFullYear()}-${pad2(v.getMonth()+1)}-${pad2(v.getDate())}`;
-    }
-    const m = str(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!m) return null;
-    return `${m[3]}-${m[2]}-${m[1]}`;
-  }
-
   return {
     file: fname,
     gateway: 'SODEXO',
@@ -431,3 +586,363 @@ export function parseSodexoRecebiveisRows(rows: RawCell[][], fname = ''): any {
     ignoradas,
   };
 }
+
+// ── Recebíveis / Guias de Reembolso VR ──────────────────────────────
+
+export function parseVrRecebiveisRows(rows: RawCell[][], fname = ''): any {
+  let hi = -1;
+  const col: Record<string, number> = {};
+
+  // Scan top rows for CNPJ
+  let headerCnpj = '';
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const row = rows[i]!;
+    for (let j = 0; j < row.length; j++) {
+      const cellStr = str(row[j]);
+      if (cellStr.toLowerCase().includes('cnpj')) {
+        if (cellStr.includes(':')) {
+          headerCnpj = cellStr.split(':')[1]!.trim().replace(/[^\d]/g, '');
+        } else if (j + 1 < row.length) {
+          headerCnpj = str(row[j + 1]).replace(/[^\d]/g, '');
+        }
+        break;
+      }
+    }
+    if (headerCnpj) break;
+  }
+
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
+    const row = rows[i]!;
+    const normRow = row.map(c => norm(c));
+
+    const hasGuia = normRow.some(c => c.includes('guia'));
+    const hasBruto = normRow.some(c => c.includes('bruto'));
+    const hasLiq = normRow.some(c => c.includes('liquido'));
+
+    if (hasGuia && (hasBruto || hasLiq)) {
+      hi = i;
+      row.forEach((c, j) => {
+        const s = norm(c);
+        if (s.includes('guia')) col.numeroGuia = j;
+        else if (s === 'produto') col.produto = j;
+        else if (s.includes('contrato')) col.contrato = j;
+        else if (s.includes('status') || s.includes('situacao')) col.status = j;
+        else if (s.includes('corte')) col.dataCorte = j;
+        else if (s.includes('pagamento') || s.includes('pgto')) col.dataPagamento = j;
+        else if (s.includes('bruto')) col.valorBruto = j;
+        else if (s.includes('liquido')) col.valorLiquido = j;
+      });
+      break;
+    }
+  }
+
+  if (hi < 0 || col.valorBruto == null || col.numeroGuia == null) {
+    throw new Error('Layout de Guias de Reembolso VR não reconhecido.');
+  }
+
+  const recebiveis: any[] = [];
+  let ignoradas = 0;
+
+  for (let i = hi + 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.length === 0 || row.every(c => c === '' || c == null)) {
+      ignoradas++;
+      continue;
+    }
+
+    if (row.some(c => str(c).toLowerCase().includes('total'))) {
+      ignoradas++;
+      continue;
+    }
+
+    const bruto = col.valorBruto != null ? parseBRL(row[col.valorBruto]) : 0;
+    const liquido = col.valorLiquido != null ? parseBRL(row[col.valorLiquido]) : bruto;
+
+    if (!bruto && !liquido) {
+      ignoradas++;
+      continue;
+    }
+
+    const numeroGuia = str(row[col.numeroGuia]).trim().replace(/^0+/, '') || str(row[col.numeroGuia]).trim();
+    if (!numeroGuia) {
+      ignoradas++;
+      continue;
+    }
+
+    const dataPagamento = col.dataPagamento != null ? parseDateBR(row[col.dataPagamento]) : null;
+    if (!dataPagamento) {
+      ignoradas++;
+      continue;
+    }
+
+    const dataCorte = col.dataCorte != null ? parseDateBR(row[col.dataCorte]) : dataPagamento;
+    const status = col.status != null ? str(row[col.status]).trim() : 'Em processamento';
+    const isPago = status.toLowerCase().includes('pago');
+    const produto = col.produto != null ? str(row[col.produto]).trim() : 'VR Benefícios';
+    const ec = headerCnpj || 'GERAL';
+    const descontos = r2(liquido - bruto);
+
+    const idempotencyKey = `VR::${ec}::${numeroGuia}::${dataPagamento}`;
+
+    recebiveis.push({
+      idempotencyKey,
+      gateway: 'VR',
+      ec,
+      ecCentralizador: ec,
+      cnpj: headerCnpj,
+      dataVencimento: dataPagamento,
+      bandeira: 'VR',
+      modalidade: 'VOUCHER',
+      tipoLancamento: 'PAGAMENTO_REALIZADO',
+      lancamento: produto,
+      valorLiquido: r2(liquido),
+      valorLiquidado: isPago ? r2(liquido) : 0,
+      cartaoMascarado: null,
+      autorizacao: numeroGuia,
+      nsu: numeroGuia,
+      terminal: null,
+      dataVenda: dataCorte,
+      horaVenda: null,
+      valorVenda: r2(bruto),
+      descontos,
+      parcelasInfo: '1 de 1',
+    });
+  }
+
+  return {
+    file: fname,
+    gateway: 'VR',
+    totalLinhas: rows.length,
+    recebiveis,
+    ignoradas,
+  };
+}
+
+// ── Parsers EDI / TXT Posicional (VR Benefícios) ────────────────────
+
+export function parseVrVendasEdi(text: string, fname = ''): VoucherResult {
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  let headerCnpj = '';
+
+  for (const line of lines) {
+    if (line.startsWith('1') && line.length >= 15) {
+      headerCnpj = line.slice(1, 15).trim().replace(/[^\d]/g, '');
+      break;
+    }
+  }
+
+  const ec = headerCnpj || 'GERAL';
+  const vendas: VoucherVenda[] = [];
+  let ignoradas = 0;
+
+  for (const line of lines) {
+    if (!line.startsWith('2') || line.length < 67) {
+      ignoradas++;
+      continue;
+    }
+
+    const tipoProdCode = line.charAt(1);
+    let produto = 'VR Benefícios';
+    if (tipoProdCode === '0') produto = 'VR Refeição';
+    else if (tipoProdCode === '1') produto = 'VR Alimentação';
+    else if (tipoProdCode === '2') produto = 'VR Auto';
+    else if (tipoProdCode === '3') produto = 'VR Cultura';
+
+    const dtRaw = line.slice(2, 16);
+    let dataHoraVenda = '';
+    let dataDia = '';
+    const mDt = dtRaw.match(/^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})(\d{2})/);
+    if (mDt) {
+      dataDia = `${mDt[3]}-${mDt[2]}-${mDt[1]}`;
+      dataHoraVenda = `${dataDia}T${mDt[4]}:${mDt[5]}:${mDt[6]}`;
+    } else {
+      ignoradas++;
+      continue;
+    }
+
+    const valRaw = line.slice(16, 28).trim();
+    const isNeg = valRaw.startsWith('-');
+    const digits = valRaw.replace(/[^\d]/g, '');
+    const numVal = parseInt(digits, 10) / 100;
+    if (isNaN(numVal) || numVal === 0) {
+      ignoradas++;
+      continue;
+    }
+    const valorBruto = r2(isNeg ? -numVal : numVal);
+
+    const cartao = line.slice(28, 47).trim();
+    const autRaw = line.slice(47, 67).trim();
+    const aut = autRaw.replace(/^0+/, '') || autRaw;
+    const nsu = aut;
+
+    const idempotencyKey = `VR::${ec}::${nsu}::${dataDia}`;
+
+    vendas.push({
+      idempotencyKey,
+      gateway: 'VR',
+      ec,
+      cnpj: headerCnpj,
+      bandeira: 'VR',
+      bandeiraBruta: produto,
+      modalidade: 'VOUCHER',
+      formaPagamento: produto,
+      dataHoraVenda,
+      status: isNeg ? 'CANCELADA' : 'APROVADA',
+      parcelas: 1,
+      dataPrimeiroPgto: null,
+      cartaoMascarado: cartao,
+      autorizacao: aut,
+      nsu,
+      terminal: '',
+      meioCaptura: 'TEF',
+      valorBruto,
+      valorTaxa: 0,
+      valorLiquido: valorBruto,
+    });
+  }
+
+  return {
+    file: fname,
+    gateway: 'VR',
+    totalLinhas: lines.length,
+    vendas,
+    ignoradas,
+  };
+}
+
+export function parseVrReembolsosEdi(text: string, fname = ''): any {
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  let headerCnpj = '';
+
+  for (const line of lines) {
+    if (line.startsWith('1')) {
+      const digits = line.slice(1, 30).replace(/[^\d]/g, '');
+      if (digits.length >= 14) {
+        headerCnpj = digits.slice(0, 14);
+        break;
+      }
+    }
+  }
+
+  const ec = headerCnpj || 'GERAL';
+  const recebiveis: any[] = [];
+  let ignoradas = 0;
+
+  for (const line of lines) {
+    // 1. Layout oficial (layout_reembolsos_vr.pdf) onde tipoRec = '1' posicional de 200 pos
+    if (line.startsWith('1') && /^\d{1}/.test(line) && line.length >= 78 && !line.includes('R$') && !line.includes('/')) {
+      const guia = line.slice(1, 9).trim().replace(/^0+/, '');
+      const cnpj = line.slice(9, 23).trim();
+      const corteRaw = line.slice(38, 46);
+      const pgtoRaw = line.slice(46, 54);
+      const brutoRaw = line.slice(54, 66);
+      const liqRaw = line.slice(66, 78);
+
+      const mCorte = corteRaw.match(/^(\d{2})(\d{2})(\d{4})$/);
+      const mPgto = pgtoRaw.match(/^(\d{2})(\d{2})(\d{4})$/);
+      const dataVenda = mCorte ? `${mCorte[3]}-${mCorte[2]}-${mCorte[1]}` : null;
+      const dataVencimento = mPgto ? `${mPgto[3]}-${mPgto[2]}-${mPgto[1]}` : null;
+
+      const valorBruto = r2(parseInt(brutoRaw.replace(/[^\d]/g, ''), 10) / 100);
+      const valorLiquido = r2(parseInt(liqRaw.replace(/[^\d]/g, ''), 10) / 100);
+      const descontos = r2(valorLiquido - valorBruto);
+
+      if (guia && dataVencimento) {
+        recebiveis.push({
+          idempotencyKey: `VR::${ec}::${guia}::${dataVencimento}`,
+          gateway: 'VR',
+          ec,
+          ecCentralizador: ec,
+          cnpj: cnpj || headerCnpj,
+          dataVencimento,
+          bandeira: 'VR',
+          modalidade: 'VOUCHER',
+          tipoLancamento: 'PAGAMENTO_REALIZADO',
+          lancamento: 'VR Reembolso',
+          valorLiquido,
+          valorLiquidado: valorLiquido,
+          cartaoMascarado: null,
+          autorizacao: guia,
+          nsu: guia,
+          terminal: null,
+          dataVenda,
+          horaVenda: null,
+          valorVenda: valorBruto,
+          descontos,
+          parcelasInfo: '1 de 1',
+        });
+        continue;
+      }
+    }
+
+    // 2. Formato de exportação do portal da VR (ex: extrato_reembolsos_vr_undefined_a_undefined.txt)
+    if (line.startsWith('2')) {
+      const m = line.match(/^2(\d{8,10})(.*?)(\d{12,15})(.*?)(\d{2}\/\d{2}\/\d{4})(\d{2}\/\d{2}\/\d{4})(.*?R\$\s*[\d,.]+)(.*?R\$\s*[\d,.]+)/);
+      if (m) {
+        const guia = (m[1] ?? '').trim().replace(/^0+/, '');
+        const produto = (m[2] ?? '').trim() || 'VR Benefícios';
+        const status = (m[4] ?? '').trim();
+        const corteRaw = m[5] ?? '';
+        const pgtoRaw = m[6] ?? '';
+
+        const mCorte = corteRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const mPgto = pgtoRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const dataVenda = mCorte ? `${mCorte[3]}-${mCorte[2]}-${mCorte[1]}` : null;
+        const dataVencimento = mPgto ? `${mPgto[3]}-${mPgto[2]}-${mPgto[1]}` : null;
+
+
+        const re = /R\$\s*(\d+(?:[.,]\d{2}))/g;
+        let mR: RegExpExecArray | null;
+        const valMatches: number[] = [];
+        while ((mR = re.exec(line)) !== null) {
+          valMatches.push(parseFloat(mR[1]!.replace(',', '.')));
+        }
+
+        const valorBruto = valMatches.length >= 1 ? r2(valMatches[0]!) : 0;
+        const valorLiquido = valMatches.length >= 2 ? r2(valMatches[1]!) : valorBruto;
+        const descontos = r2(valorLiquido - valorBruto);
+        const isPago = status.toLowerCase().includes('pago');
+
+
+
+        if (guia && dataVencimento) {
+          recebiveis.push({
+            idempotencyKey: `VR::${ec}::${guia}::${dataVencimento}`,
+            gateway: 'VR',
+            ec,
+            ecCentralizador: ec,
+            cnpj: headerCnpj,
+            dataVencimento,
+            bandeira: 'VR',
+            modalidade: 'VOUCHER',
+            tipoLancamento: 'PAGAMENTO_REALIZADO',
+            lancamento: produto,
+            valorLiquido,
+            valorLiquidado: isPago ? valorLiquido : 0,
+            cartaoMascarado: null,
+            autorizacao: guia,
+            nsu: guia,
+            terminal: null,
+            dataVenda,
+            horaVenda: null,
+            valorVenda: valorBruto,
+            descontos,
+            parcelasInfo: '1 de 1',
+          });
+          continue;
+        }
+      }
+    }
+
+    ignoradas++;
+  }
+
+  return {
+    file: fname,
+    gateway: 'VR',
+    totalLinhas: lines.length,
+    recebiveis,
+    ignoradas,
+  };
+}
+

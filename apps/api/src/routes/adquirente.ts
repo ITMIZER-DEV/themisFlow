@@ -1558,6 +1558,97 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
+  // ── GET /api/adquirente/vendas/:key/pagamento ────────────────────
+  // Retorna status de pagamento, recebíveis (com valorLiquidado) e
+  // previsão de liquidação para uma venda específica por idempotencyKey.
+  fastify.get<{ Params: { key: string } }>(
+    '/vendas/:key/pagamento',
+    { preHandler: pre },
+    async (req, reply) => {
+      const { key } = req.params;
+
+      const venda = await fastify.prisma.adquirenteVenda.findUnique({
+        where: { idempotencyKey: key },
+      });
+      if (!venda) return reply.status(404).send({ success: false, error: 'Venda não encontrada' });
+
+      // NSU-first: só cai para autorizacao se NSU não achar recebíveis
+      let recebiveis: Awaited<ReturnType<typeof fastify.prisma.adquirenteRecebivel.findMany>> = [];
+
+      if (venda.nsu) {
+        recebiveis = await fastify.prisma.adquirenteRecebivel.findMany({
+          where: { nsu: venda.nsu, gateway: venda.gateway },
+          orderBy: { dataVencimento: 'asc' },
+        });
+      }
+      if (recebiveis.length === 0 && venda.autorizacao) {
+        recebiveis = await fastify.prisma.adquirenteRecebivel.findMany({
+          where: { autorizacao: venda.autorizacao, gateway: venda.gateway },
+          orderBy: { dataVencimento: 'asc' },
+        });
+      }
+
+      const somaLiquidado = recebiveis.reduce((a, r) => a + Number(r.valorLiquidado), 0);
+      const somaLiquido   = recebiveis.reduce((a, r) => a + Number(r.valorLiquido),   0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+
+      let statusPagamento: string;
+      if (venda.status === 'CANCELADA') {
+        statusPagamento = 'CANCELADA';
+      } else if (venda.status === 'CHARGEBACK') {
+        statusPagamento = 'CHARGEBACK';
+      } else if (recebiveis.length === 0) {
+        statusPagamento = 'SEM_RECEBIVEL';
+      } else if (somaLiquido > 0 && somaLiquidado >= somaLiquido * 0.99) {
+        statusPagamento = 'PAGO';
+      } else if (somaLiquidado > 0) {
+        statusPagamento = 'PARCIAL';
+      } else if (recebiveis.some(r => new Date(r.dataVencimento) <= today)) {
+        statusPagamento = 'VENCIDO';
+      } else {
+        statusPagamento = 'AGUARDANDO';
+      }
+
+      return reply.send({
+        success: true,
+        venda: {
+          idempotencyKey:   venda.idempotencyKey,
+          nsu:              venda.nsu,
+          autorizacao:      venda.autorizacao,
+          terminal:         venda.terminal,
+          gateway:          venda.gateway,
+          bandeira:         venda.bandeira,
+          modalidade:       venda.modalidade,
+          status:           venda.status,
+          parcelas:         venda.parcelas,
+          valorBruto:       Number(venda.valorBruto),
+          valorTaxa:        Number(venda.valorTaxa),
+          valorLiquido:     Number(venda.valorLiquido),
+          dataHoraVenda:    venda.dataHoraVenda.toISOString(),
+          cartaoMascarado:  venda.cartaoMascarado,
+          dataPrimeiroPgto: venda.dataPrimeiroPgto?.toISOString().slice(0, 10) ?? null,
+        },
+        statusPagamento,
+        somaLiquidado,
+        somaLiquido,
+        recebiveis: recebiveis.map(r => ({
+          idempotencyKey: r.idempotencyKey,
+          dataVencimento: r.dataVencimento.toISOString().slice(0, 10),
+          dataVenda:      r.dataVenda?.toISOString().slice(0, 10) ?? null,
+          tipoLancamento: r.tipoLancamento,
+          lancamento:     r.lancamento,
+          bandeira:       r.bandeira,
+          modalidade:     r.modalidade,
+          parcelasInfo:   r.parcelasInfo,
+          valorLiquido:   Number(r.valorLiquido),
+          valorLiquidado: Number(r.valorLiquidado),
+          nsu:            r.nsu,
+          autorizacao:    r.autorizacao,
+        })),
+      });
+    },
+  );
+
   // ── Amostras do Extrato Getnet EDI V10 para o Sandbox ─────────────
   fastify.get('/getnet/samples/:sampleName', async (req, reply) => {
     const { sampleName } = req.params as { sampleName: string };

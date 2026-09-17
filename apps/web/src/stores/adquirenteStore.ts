@@ -8,8 +8,20 @@ import {
   parseTicketRows,
   parseVrBeneficiosRows,
   parseSodexoRecebiveisRows,
+  parseVrRecebiveisRows,
+  parseVrVendasEdi,
+  parseVrReembolsosEdi,
 } from '@themisflow/core';
 import { api } from '../services/api';
+
+async function readTextFile(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder('latin1').decode(buf);
+  }
+}
 
 // ── Tipos da API ──────────────────────────────────────────────────
 
@@ -595,27 +607,39 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
   importVendas: async (file, gateway) => {
     set({ importingVendas: true, importError: null, lastImport: null });
     try {
-      const buf  = await file.arrayBuffer();
-      const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
-
-      // Determina o parser com base no gateway
-      let parseFn = parseGetnetVendasRows as (rows: any[][], gateway: string, fname: string) => any;
-      if (gateway === 'ALELO') parseFn = parseAleloRows;
-      else if (gateway === 'SODEXO') parseFn = parseSodexoRows;
-      else if (gateway === 'TICKET') parseFn = parseTicketRows;
-      else if (gateway === 'VR') parseFn = parseVrBeneficiosRows;
-
-      // Tenta parsear cada sheet — combina tudo
+      const isTxt = file.name.toLowerCase().endsWith('.txt');
       const allVendas: any[] = [];
-      for (const sheetName of wb.SheetNames) {
-        const ws = wb.Sheets[sheetName];
-        if (!ws) continue;
-        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
-        try {
-          const parsed = parseFn(rows as string[][], gateway, file.name);
+
+      if (isTxt) {
+        const text = await readTextFile(file);
+        if (gateway === 'VR') {
+          const parsed = parseVrVendasEdi(text, file.name);
           allVendas.push(...parsed.vendas);
-        } catch {
-          // Sheet sem layout reconhecido — pula
+        } else {
+          throw new Error(`Arquivo .txt não suportado para o gateway ${gateway}.`);
+        }
+      } else {
+        const buf  = await file.arrayBuffer();
+        const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+
+        // Determina o parser com base no gateway
+        let parseFn = parseGetnetVendasRows as (rows: any[][], gateway: string, fname: string) => any;
+        if (gateway === 'ALELO') parseFn = parseAleloRows;
+        else if (gateway === 'SODEXO') parseFn = parseSodexoRows;
+        else if (gateway === 'TICKET') parseFn = parseTicketRows;
+        else if (gateway === 'VR') parseFn = parseVrBeneficiosRows;
+
+        // Tenta parsear cada sheet — combina tudo
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          if (!ws) continue;
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+          try {
+            const parsed = parseFn(rows as string[][], gateway, file.name);
+            allVendas.push(...parsed.vendas);
+          } catch {
+            // Sheet sem layout reconhecido — pula
+          }
         }
       }
 
@@ -656,27 +680,47 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
   importRecebiveis: async (file, gateway) => {
     set({ importingRecebiveis: true, importError: null, lastImport: null });
     try {
-      const buf = await file.arrayBuffer();
-      const wb  = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+      const isTxt = file.name.toLowerCase().endsWith('.txt');
+      let parsed: any;
 
-      let parsed;
-      if (gateway === 'SODEXO') {
-        const sheetName = wb.SheetNames.find(n =>
-          n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('pagam') ||
-          n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('pgto')
-        ) ?? wb.SheetNames[0]!;
-        const ws = wb.Sheets[sheetName];
-        if (!ws) throw new Error('Planilha de pagamentos não encontrada');
-        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
-        parsed = parseSodexoRecebiveisRows(rows as string[][], file.name);
+      if (isTxt) {
+        const text = await readTextFile(file);
+        if (gateway === 'VR') {
+          parsed = parseVrReembolsosEdi(text, file.name);
+        } else {
+          throw new Error(`Arquivo .txt não suportado para o gateway ${gateway}.`);
+        }
       } else {
-        const sheetName = wb.SheetNames.find(n =>
-          n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('detalh'),
-        ) ?? wb.SheetNames[0]!;
-        const ws = wb.Sheets[sheetName];
-        if (!ws) throw new Error('Sheet "Detalhado" não encontrada no arquivo');
-        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
-        parsed = parseGetnetRecebiveisRows(rows as string[][], gateway, file.name);
+        const buf = await file.arrayBuffer();
+        const wb  = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+
+        if (gateway === 'SODEXO') {
+          const sheetName = wb.SheetNames.find(n =>
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('pagam') ||
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('pgto')
+          ) ?? wb.SheetNames[0]!;
+          const ws = wb.Sheets[sheetName];
+          if (!ws) throw new Error('Planilha de pagamentos não encontrada');
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+          parsed = parseSodexoRecebiveisRows(rows as string[][], file.name);
+        } else if (gateway === 'VR') {
+          const sheetName = wb.SheetNames.find(n =>
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('reembolso') ||
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('guia')
+          ) ?? wb.SheetNames[0]!;
+          const ws = wb.Sheets[sheetName];
+          if (!ws) throw new Error('Planilha de guias de reembolso não encontrada');
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+          parsed = parseVrRecebiveisRows(rows as string[][], file.name);
+        } else {
+          const sheetName = wb.SheetNames.find(n =>
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('detalh'),
+          ) ?? wb.SheetNames[0]!;
+          const ws = wb.Sheets[sheetName];
+          if (!ws) throw new Error('Sheet "Detalhado" não encontrada no arquivo');
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+          parsed = parseGetnetRecebiveisRows(rows as string[][], gateway, file.name);
+        }
       }
 
       if (parsed.recebiveis.length === 0) {

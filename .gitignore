@@ -55,6 +55,8 @@ docs/sitef/
 # Exceções: Fixtures mock/fictícias de testes automatizados
 !reference/fixtures/banco-teste.ofx
 !reference/fixtures/extrato-sistema-sintetico.xls
+!docs/vr/vr/extracted_sales/extratos/extrato_vendas_vr_2026-08-01_a_2026-09-15.xls
+!docs/vr/vr/extracted_refund/extratos/extrato_reembolsos_vr_undefined_a_undefined.xls
 
 # Pacotes e imagens de deploy pesados (gerados pelos scripts de build)
 *.tar

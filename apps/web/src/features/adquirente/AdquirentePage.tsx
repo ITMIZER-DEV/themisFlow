@@ -8,6 +8,7 @@ import {
 } from '../../stores/adquirenteStore';
 import { fmtDate, fmtDateTime } from '../../lib/date';
 import { exportTaxasCSV, downloadCSV } from '../../lib/csv';
+import { api } from '../../services/api';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -46,6 +47,225 @@ function statusVendaBadge(s: string) {
   return <span className={e.cls} style={{ fontSize: '0.62rem' }}>{e.label}</span>;
 }
 
+// ── Modal: Situação de Pagamento ──────────────────────────────────
+
+interface VendaPagamentoRecebivel {
+  idempotencyKey: string;
+  dataVencimento: string;
+  dataVenda:      string | null;
+  tipoLancamento: string;
+  lancamento:     string;
+  bandeira:       string;
+  modalidade:     string;
+  parcelasInfo:   string | null;
+  valorLiquido:   number;
+  valorLiquidado: number;
+}
+
+interface VendaPagamento {
+  venda: {
+    idempotencyKey:   string;
+    nsu:              string;
+    autorizacao:      string | null;
+    terminal:         string | null;
+    gateway:          string;
+    bandeira:         string;
+    modalidade:       string;
+    status:           string;
+    parcelas:         number;
+    valorBruto:       number;
+    valorTaxa:        number;
+    valorLiquido:     number;
+    dataHoraVenda:    string;
+    cartaoMascarado:  string;
+    dataPrimeiroPgto: string | null;
+  };
+  statusPagamento: string;
+  somaLiquidado:   number;
+  somaLiquido:     number;
+  recebiveis:      VendaPagamentoRecebivel[];
+}
+
+const STATUS_PGTO_MAP: Record<string, { label: string; cls: string; desc: (d: VendaPagamento) => string }> = {
+  PAGO:          { label: 'PAGO',          cls: 'tab-badge tab-badge-teal', desc: d => `Totalmente liquidado pela adquirente — ${fmtMoeda(d.somaLiquidado)}` },
+  PARCIAL:       { label: 'PARCIAL',       cls: 'tab-badge tab-badge-warn', desc: d => `${fmtMoeda(d.somaLiquidado)} de ${fmtMoeda(d.somaLiquido)} liquidados` },
+  AGUARDANDO:    { label: 'AGUARDANDO',    cls: 'tab-badge',               desc: _ => 'Transação aprovada — aguardando liquidação pela adquirente' },
+  VENCIDO:       { label: 'VENCIDO',       cls: 'tab-badge',               desc: _ => 'Prazo de pagamento vencido sem liquidação registrada' },
+  SEM_RECEBIVEL: { label: 'SEM RECEBÍVEL', cls: 'tab-badge',               desc: _ => 'Nenhum recebível importado para esta venda' },
+  CANCELADA:     { label: 'CANCELADA',     cls: 'tab-badge',               desc: _ => 'Transação cancelada — sem liquidação' },
+  CHARGEBACK:    { label: 'CHARGEBACK',    cls: 'tab-badge tab-badge-warn', desc: _ => 'Chargeback registrado — valor em disputa' },
+};
+
+function statusPgtoBadge(s: string, size = '0.72rem') {
+  const e = STATUS_PGTO_MAP[s] ?? { label: s, cls: 'tab-badge', desc: () => '' };
+  return <span className={e.cls} style={{ fontSize: size }}>{e.label}</span>;
+}
+
+function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose: () => void }) {
+  const [data, setData]     = useState<VendaPagamento | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]   = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true); setError(null);
+    api.get<{ success: boolean } & VendaPagamento>(`/adquirente/vendas/${encodeURIComponent(vendaKey)}/pagamento`)
+      .then(res => setData(res.data))
+      .catch((e: any) => setError(e?.response?.data?.error ?? 'Erro ao buscar dados de pagamento'))
+      .finally(() => setLoading(false));
+  }, [vendaKey]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-4)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Situação de Pagamento</div>
+            {data && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                NSU {data.venda.nsu} · {data.venda.gateway} · {data.venda.bandeira} {data.venda.modalidade}
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '1.1rem', padding: 4, lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: 'var(--sp-4) var(--sp-5)', flex: 1 }}>
+          {loading && <div style={{ color: 'var(--muted)', fontSize: '0.8rem', textAlign: 'center', padding: 'var(--sp-8)' }}>Carregando...</div>}
+          {error   && <div className="alert alert-error" style={{ marginTop: 8 }}>{error}</div>}
+
+          {data && !loading && (() => {
+            const meta = STATUS_PGTO_MAP[data.statusPagamento] ?? STATUS_PGTO_MAP['SEM_RECEBIVEL'];
+            return (
+              <>
+                {/* Status principal */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 'var(--sp-4)', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                  {statusPgtoBadge(data.statusPagamento, '0.78rem')}
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)' }}>{meta.desc(data)}</span>
+                </div>
+
+                {/* Identificação */}
+                <div style={{ marginBottom: 'var(--sp-4)' }}>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Identificação da Venda</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.74rem' }}>
+                    {[
+                      ['Data/Hora', fmtDateTime(data.venda.dataHoraVenda)],
+                      ['NSU',        data.venda.nsu || '—'],
+                      ['Autorização',data.venda.autorizacao || '—'],
+                      ['Terminal',   data.venda.terminal || '—'],
+                      ['Cartão',     data.venda.cartaoMascarado ? `••••${data.venda.cartaoMascarado.slice(-4)}` : '—'],
+                      ['Parcelas',   `${data.venda.parcelas}x`],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                        <span style={{ color: 'var(--muted)', minWidth: 82, flexShrink: 0 }}>{label}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)' }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* KPI valores */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-2)', marginTop: 12 }}>
+                    {[
+                      { label: 'BRUTO',   v: data.venda.valorBruto,   color: 'var(--text)' },
+                      { label: 'TAXA',    v: data.venda.valorTaxa,    color: 'var(--red)'  },
+                      { label: 'LÍQUIDO', v: data.venda.valorLiquido, color: 'var(--teal)' },
+                    ].map(({ label, v, color }) => (
+                      <div key={label} style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 'var(--sp-2) var(--sp-3)' }}>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--muted)', marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color }}>{fmtMoeda(v)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Agenda de Recebimento */}
+                {data.recebiveis.length > 0 ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Agenda de Recebimento — {data.recebiveis.length} parcela{data.recebiveis.length !== 1 ? 's' : ''}
+                      </span>
+                      {data.venda.dataPrimeiroPgto && (
+                        <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>
+                          1º pgto previsto: <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-soft)' }}>{fmtDate(data.venda.dataPrimeiroPgto)}</span>
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                      <table className="trn-table" style={{ margin: 0 }}>
+                        <thead>
+                          <tr>
+                            <th>Parcela</th>
+                            <th>Vencimento</th>
+                            <th className="right">Prev. Líquido</th>
+                            <th className="right">Liquidado</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.recebiveis.map((r, idx) => {
+                            const isPast = r.dataVencimento < hoje;
+                            const isPago = r.valorLiquidado > 0;
+                            const rowStatus = isPago ? 'PAGO' : isPast ? 'VENCIDO' : 'PREVISTO';
+                            const rowCls   = isPago ? 'tab-badge tab-badge-teal' : isPast ? 'tab-badge' : 'tab-badge';
+                            const rowColor = isPago ? 'var(--red-bg)' : undefined;
+                            return (
+                              <tr key={r.idempotencyKey} style={{ opacity: isPast && !isPago ? 0.7 : 1, background: rowColor }}>
+                                <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--muted)' }}>
+                                  {r.parcelasInfo ?? `${idx + 1}/${data.recebiveis.length}`}
+                                </td>
+                                <td className="date-cell" style={{ fontSize: '0.7rem' }}>{fmtDate(r.dataVencimento)}</td>
+                                <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--text-soft)' }}>{fmtMoeda(r.valorLiquido)}</td>
+                                <td className="mono-cell" style={{ textAlign: 'right', color: isPago ? 'var(--teal)' : 'var(--muted)' }}>
+                                  {isPago ? fmtMoeda(r.valorLiquidado) : '—'}
+                                </td>
+                                <td><span className={rowCls} style={{ fontSize: '0.58rem' }}>{rowStatus}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        {data.recebiveis.length > 1 && (
+                          <tfoot>
+                            <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                              <td colSpan={2} style={{ fontSize: '0.68rem', color: 'var(--muted)', padding: '6px 8px' }}>TOTAL</td>
+                              <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(data.somaLiquido)}</td>
+                              <td className="mono-cell" style={{ textAlign: 'right', color: data.somaLiquidado > 0 ? 'var(--teal)' : 'var(--muted)' }}>
+                                {data.somaLiquidado > 0 ? fmtMoeda(data.somaLiquidado) : '—'}
+                              </td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+                    Nenhum recebível vinculado. Importe o arquivo <strong>Recebivel_Completos</strong> para ver a agenda de pagamento.
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dropzone genérico ─────────────────────────────────────────────
 
 interface DropzoneProps {
@@ -54,9 +274,10 @@ interface DropzoneProps {
   loading:  boolean;
   onFile:   (f: File) => void;
   accent?:  'teal' | 'gold';
+  accept?:  string;
 }
 
-function Dropzone({ label, sub, loading, onFile, accent = 'teal' }: DropzoneProps) {
+function Dropzone({ label, sub, loading, onFile, accent = 'teal', accept = '.xlsx,.xls,.txt' }: DropzoneProps) {
   const [over, setOver] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
 
@@ -103,7 +324,7 @@ function Dropzone({ label, sub, loading, onFile, accent = 'teal' }: DropzoneProp
       <input
         ref={ref}
         type="file"
-        accept=".xlsx,.xls"
+        accept={accept}
         style={{ display: 'none' }}
         onChange={e => {
           const f = e.target.files?.[0];
@@ -222,10 +443,11 @@ function TabImportar() {
           </div>
           <Dropzone
             label={`Importar Vendas (${displayGateway})`}
-            sub="Arquivo Vendas_Detalhado_*.xlsx — sheets CARTÕES e VOUCHER"
+            sub={gateway === 'VR' ? 'Extrato de Vendas VR — .xlsx, .xls ou .txt (EDI 200 posições)' : 'Arquivo Vendas_Detalhado_*.xlsx — sheets CARTÕES e VOUCHER'}
             loading={importingV}
             onFile={handleVendas}
             accent="teal"
+            accept=".xlsx,.xls,.txt"
           />
         </div>
         <div>
@@ -234,10 +456,11 @@ function TabImportar() {
           </div>
           <Dropzone
             label={`Importar Recebíveis (${displayGateway})`}
-            sub="Arquivo Recebivel_Completos_*.xlsx — sheet Detalhado"
+            sub={gateway === 'VR' ? 'Guias de Reembolso VR — .xlsx, .xls ou .txt (EDI 200 posições)' : gateway === 'SODEXO' ? 'Extrato de pagamentos Sodexo — .xlsx' : 'Arquivo Recebivel_Completos_*.xlsx — sheet Detalhado'}
             loading={importingR}
             onFile={handleRecebiveis}
             accent="gold"
+            accept=".xlsx,.xls,.txt"
           />
         </div>
       </div>
@@ -468,6 +691,7 @@ function TabVendas() {
   const loadVendas      = useAdquirenteStore(s => s.loadVendas);
   const setFilter       = useAdquirenteStore(s => s.setVendasFilter);
   const loadResumo      = useAdquirenteStore(s => s.loadResumoVendas);
+  const [pagamentoKey, setPagamentoKey] = useState<string | null>(null);
 
   const totalPages = Math.ceil(total / filter.limit);
 
@@ -553,6 +777,7 @@ function TabVendas() {
                   <th className="right">Líquido</th>
                   <th>Venda</th>
                   <th>Concil.</th>
+                  <th>Pgto.</th>
                 </tr>
               </thead>
               <tbody>
@@ -574,6 +799,15 @@ function TabVendas() {
                     <td className="cred-cell">{fmtMoeda(v.valorLiquido)}</td>
                     <td>{statusVendaBadge(v.status)}</td>
                     <td>{statusConcBadge(v.statusConc)}</td>
+                    <td>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: '0.62rem', padding: '2px 8px', whiteSpace: 'nowrap' }}
+                        onClick={e => { e.stopPropagation(); setPagamentoKey(v.idempotencyKey); }}
+                      >
+                        Ver Pgto.
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -592,6 +826,10 @@ function TabVendas() {
             </div>
           )}
         </div>
+      )}
+
+      {pagamentoKey && (
+        <VendaPagamentoModal vendaKey={pagamentoKey} onClose={() => setPagamentoKey(null)} />
       )}
     </div>
   );
@@ -1267,6 +1505,7 @@ function TabRastreio() {
   const loadRastreio   = useAdquirenteStore(s => s.loadRastreio);
 
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [pagamentoKey, setPagamentoKey] = useState<string | null>(null);
 
   const toggleRow = (key: string) =>
     setExpandidos(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
@@ -1409,6 +1648,7 @@ function TabRastreio() {
                   <th className="right">Líquido</th>
                   <th>Conc.</th>
                   <th>Rastreio</th>
+                  <th>Pgto.</th>
                 </tr>
               </thead>
               <tbody>
@@ -1456,6 +1696,15 @@ function TabRastreio() {
                             )}
                           </div>
                         </td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: '0.62rem', padding: '2px 8px', whiteSpace: 'nowrap' }}
+                            onClick={() => setPagamentoKey(tx.idempotencyKey)}
+                          >
+                            Ver Pgto.
+                          </button>
+                        </td>
                       </tr>
                       {expanded && <RastreioExpandido key={`exp-${tx.idempotencyKey}`} tx={tx} />}
                     </>
@@ -1477,6 +1726,10 @@ function TabRastreio() {
             </div>
           )}
         </div>
+      )}
+
+      {pagamentoKey && (
+        <VendaPagamentoModal vendaKey={pagamentoKey} onClose={() => setPagamentoKey(null)} />
       )}
     </div>
   );

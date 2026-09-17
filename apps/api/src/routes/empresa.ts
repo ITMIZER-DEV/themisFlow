@@ -17,6 +17,8 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
         erpTipoIntegracao: true,
         erpAtivo: true,
         erpStatus: true,
+        erpHost: true,
+        erpDatabase: true,
       },
     });
 
@@ -31,6 +33,8 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
           erpTipoIntegracao: true,
           erpAtivo: true,
           erpStatus: true,
+          erpHost: true,
+          erpDatabase: true,
         },
       });
     }

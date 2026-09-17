@@ -119,6 +119,10 @@ export {
   parseTicketRows,
   parseVrBeneficiosRows,
   parseSodexoRecebiveisRows,
+  parseVrRecebiveisRows,
+  parseVrVendasEdi,
+  parseVrReembolsosEdi,
 } from './voucher-parser.js';
 export type { VoucherVenda, VoucherResult } from './voucher-parser.js';
+
 

@@ -33,10 +33,15 @@ function ErpSitefSyncPanel() {
     erpSoftware?: string;
     erpTipoIntegracao?: 'BANCO' | 'PLANILHA';
     erpAtivo?: boolean;
+    erpHost?: string;
+    erpDatabase?: string;
+    erpStatus?: string;
   } | null>(null);
 
-  const [dataInicio, setDataInicio] = useState('2026-06-01');
-  const [dataFim, setDataFim] = useState('2026-06-05');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [dataInicio, setDataInicio] = useState(thirtyDaysAgoStr);
+  const [dataFim, setDataFim] = useState(todayStr);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
@@ -52,8 +57,55 @@ function ErpSitefSyncPanel() {
       .catch(() => {});
   }, []);
 
-  const isBancoMode = empresaConfig?.erpTipoIntegracao === 'BANCO' && empresaConfig?.erpAtivo !== false;
-  if (!isBancoMode) return null;
+  const isConfigured = empresaConfig?.erpAtivo && Boolean(empresaConfig?.erpHost);
+
+  if (empresaConfig && !isConfigured) {
+    return (
+      <div style={{
+        background: 'rgba(240, 165, 0, 0.08)',
+        border: '1px solid rgba(240, 165, 0, 0.3)',
+        borderRadius: 'var(--radius-md)',
+        padding: '16px 20px',
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: '1.5rem' }}>⚡</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--gold)' }}>
+              Busca Direta do ERP Desativada ou Não Configurada
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 2 }}>
+              Para buscar vendas TEF direto do banco de dados (tabela <code>pdv.vendatef</code>), preencha o Host, Banco e Senha em <strong>Administração → Configuração da Empresa</strong> e ative a conexão.
+            </div>
+          </div>
+        </div>
+        <a
+          href="/admin/empresa"
+          style={{
+            padding: '7px 16px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--gold)',
+            color: '#0b1220',
+            fontWeight: 800,
+            fontSize: '0.78rem',
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          ⚙️ Configurar Conexão ERP
+        </a>
+      </div>
+    );
+  }
+
+  if (!isConfigured) return null;
 
   const handleSyncFromErp = async () => {
     setSyncing(true);
