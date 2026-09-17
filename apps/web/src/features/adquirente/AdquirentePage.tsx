@@ -727,6 +727,13 @@ function TabVendas() {
           <option value="">Todas modalidades</option>
           {['CREDITO','DEBITO','VOUCHER'].map(m => <option key={m}>{m}</option>)}
         </select>
+        <select style={selStyle} value={filter.meioCaptura ?? ''} onChange={e => void applyFilter({ meioCaptura: e.target.value || undefined })}>
+          <option value="">Todos meios (TEF/POS)</option>
+          <option value="TEF">TEF</option>
+          <option value="POS">POS</option>
+          <option value="ECOMMERCE">ECOMMERCE</option>
+          <option value="DIGITADO">DIGITADO</option>
+        </select>
         <select style={selStyle} value={filter.statusConc ?? ''} onChange={e => void applyFilter({ statusConc: e.target.value || undefined })}>
           <option value="">Todos status</option>
           {['PENDENTE','CONCILIADO','DIVERGENTE','SEM_SITEF','SEM_ADQ'].map(s => <option key={s}>{s}</option>)}
@@ -767,6 +774,7 @@ function TabVendas() {
                 <tr>
                   <th>Data/Hora</th>
                   <th>Gateway</th>
+                  <th>Meio</th>
                   <th>NSU</th>
                   <th>Bandeira</th>
                   <th>Modal.</th>
@@ -787,6 +795,19 @@ function TabVendas() {
                       {fmtDateTime(v.dataHoraVenda)}
                     </td>
                     <td style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>{v.gateway}</td>
+                    <td>
+                      <span style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        fontSize: '0.65rem',
+                        background: (v.meioCaptura || 'TEF') === 'TEF' ? 'rgba(0,201,177,0.15)' : (v.meioCaptura === 'POS' ? 'rgba(240,165,0,0.15)' : 'rgba(255,255,255,0.08)'),
+                        color: (v.meioCaptura || 'TEF') === 'TEF' ? 'var(--teal)' : (v.meioCaptura === 'POS' ? 'var(--gold)' : 'var(--muted)'),
+                        border: `1px solid ${(v.meioCaptura || 'TEF') === 'TEF' ? 'rgba(0,201,177,0.35)' : (v.meioCaptura === 'POS' ? 'rgba(240,165,0,0.35)' : 'var(--border)')}`,
+                      }}>
+                        {v.meioCaptura || 'TEF'}
+                      </span>
+                    </td>
                     <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{v.nsu}</td>
                     <td style={{ fontSize: '0.72rem' }}>{v.bandeira}</td>
                     <td style={{ fontSize: '0.7rem', color: 'var(--text-soft)' }}>{v.modalidade}</td>
@@ -2421,11 +2442,491 @@ function TabPagamentos() {
   );
 }
 
+// ── Tab: Cruzamento ERP ───────────────────────────────────────────
+
+interface CruzamentoKpis {
+  totalAdquirente:   number;
+  totalErp:          number;
+  matches:           number;
+  divergentes:       number;
+  soAdquirente:      number;
+  soErp:             number;
+  valorSoAdquirente: number;
+  valorSoErp:        number;
+  taxaMatch:         number;
+}
+
+interface CruzamentoDia {
+  data:            string;
+  qtdAdquirente:   number;
+  valorAdquirente: number;
+  qtdErp:          number;
+  valorErp:        number;
+  difQtd:          number;
+  difValor:        number;
+}
+
+interface CruzamentoMatch {
+  vendaKey:        string;
+  nsuAdq:          string | null;
+  nsuErp:          string | null;
+  nsuHostErp:      string | null;
+  autorizacao:     string | null;
+  valorAdquirente: number;
+  valorErp:        number;
+  dif:             number;
+  matchVia:        string;
+  bandeira:        string;
+  dataHoraVenda:   string;
+  pdvErp:          string;
+}
+
+interface CruzamentoSoAdq {
+  vendaKey:      string;
+  nsu:           string | null;
+  autorizacao:   string | null;
+  terminal:      string | null;
+  bandeira:      string;
+  modalidade:    string;
+  parcelas:      number;
+  valorBruto:    number;
+  dataHoraVenda: string;
+  gateway:       string;
+}
+
+interface CruzamentoSoErp {
+  id:           string;
+  nsu:          string | null;
+  nsuHost:      string | null;
+  autorizacao:  string | null;
+  pdv:          string | null;
+  nomecartao:   string | null;
+  parcelas:     number;
+  valorErp:     number;
+  data:         string;
+  hora:         string;
+}
+
+interface CruzamentoResult {
+  periodo:      { dataInicio?: string; dataFim?: string };
+  kpis:         CruzamentoKpis;
+  resumoPorDia: CruzamentoDia[];
+  matches:      CruzamentoMatch[];
+  divergentes:  CruzamentoMatch[];
+  soAdquirente: CruzamentoSoAdq[];
+  soErp:        CruzamentoSoErp[];
+}
+
+const MATCH_VIA_BADGE: Record<string, string> = {
+  NSU_HOST:    'NSU Host',
+  NSU:         'NSU',
+  AUTORIZACAO: 'Autorização',
+};
+
+function TabCruzamentoERP() {
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim,    setDataFim]    = useState('');
+  const [gateway,    setGateway]    = useState('');
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
+  const [result,     setResult]     = useState<CruzamentoResult | null>(null);
+  const [secao,      setSecao]      = useState<'resumo' | 'divergentes' | 'soAdq' | 'soErp'>('resumo');
+
+  const selStyle: React.CSSProperties = {
+    background: 'var(--panel)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+    fontFamily: 'var(--font-ui)', fontSize: '0.75rem',
+    padding: '5px 10px', outline: 'none', cursor: 'pointer',
+  };
+  const inpStyle: React.CSSProperties = { ...selStyle, fontFamily: 'var(--font-mono)', width: 140 };
+
+  const buscar = async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await api.post<{ success: boolean } & CruzamentoResult>(
+        '/adquirente/cruzamento-erp',
+        { dataInicio: dataInicio || undefined, dataFim: dataFim || undefined, gateway: gateway || undefined },
+      );
+      setResult(res.data);
+      setSecao('resumo');
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? 'Erro ao executar cruzamento');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const kpi = result?.kpis;
+
+  return (
+    <div>
+      {/* Nota explicativa */}
+      <div style={{
+        padding: 'var(--sp-3) var(--sp-4)', marginBottom: 'var(--sp-4)',
+        background: 'rgba(240,165,0,0.06)', border: '1px solid rgba(240,165,0,0.2)',
+        borderRadius: 'var(--radius)', fontSize: '0.72rem', color: 'var(--text-soft)',
+        display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start',
+      }}>
+        <span style={{ color: 'var(--gold)', fontSize: '0.9rem', lineHeight: 1 }}>ⓘ</span>
+        <span>
+          Cruza <strong>Adquirente (Getnet/etc.)</strong> × <strong>ERP (pdv.vendatef)</strong> por NSU Host, NSU e Autorização.
+          Requer conexão ERP configurada em <strong>Administração → Configuração da Empresa</strong>.
+          Mostra o que está em um lado mas não no outro, e divergências de valor.
+        </span>
+      </div>
+
+      {/* Filtros */}
+      <div className="actions-row" style={{ gap: 'var(--sp-2)', flexWrap: 'wrap', marginBottom: 'var(--sp-5)' }}>
+        <select style={selStyle} value={gateway} onChange={e => setGateway(e.target.value)}>
+          <option value="">Todos gateways</option>
+          {GATEWAYS.map(g => <option key={g}>{g}</option>)}
+        </select>
+        <input style={inpStyle} type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+        <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>→</span>
+        <input style={inpStyle} type="date" value={dataFim}    onChange={e => setDataFim(e.target.value)} />
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: '0.78rem' }}
+          disabled={loading}
+          onClick={() => void buscar()}
+        >
+          {loading ? 'Cruzando...' : '↔ Cruzar Adquirente × ERP'}
+        </button>
+        {loading && <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Consultando ERP...</span>}
+      </div>
+
+      {error && (
+        <div className="alert alert-error" style={{ marginBottom: 'var(--sp-4)' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          <div><strong>Erro:</strong> {error}</div>
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      {kpi && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-3)', marginBottom: 'var(--sp-5)' }}>
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total Adquirente</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 700 }}>{kpi.totalAdquirente.toLocaleString('pt-BR')}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 2 }}>vendas aprovadas no período</div>
+          </div>
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total ERP</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 700 }}>{kpi.totalErp.toLocaleString('pt-BR')}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 2 }}>vendas TEF no pdv.vendatef</div>
+          </div>
+          <div style={{ background: 'var(--panel)', border: `1px solid ${kpi.taxaMatch >= 95 ? 'var(--teal)' : kpi.taxaMatch >= 80 ? 'rgba(240,165,0,0.5)' : 'var(--red)'}`, borderRadius: 'var(--radius)', padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Taxa de Match</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 700, color: kpi.taxaMatch >= 95 ? 'var(--teal)' : kpi.taxaMatch >= 80 ? 'var(--gold)' : 'var(--red)' }}>
+              {kpi.taxaMatch.toFixed(1)}%
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 2 }}>{kpi.matches + kpi.divergentes} de {kpi.totalAdquirente} encontrados no ERP</div>
+          </div>
+
+          <div style={{ background: 'var(--panel)', border: kpi.divergentes > 0 ? '1px solid rgba(255,93,108,0.5)' : '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Divergências de Valor</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 700, color: kpi.divergentes > 0 ? 'var(--red)' : 'var(--muted)' }}>
+              {kpi.divergentes.toLocaleString('pt-BR')}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 2 }}>mesmo NSU/Aut, valores divergem</div>
+          </div>
+          <div style={{ background: 'var(--panel)', border: kpi.soAdquirente > 0 ? '1px solid rgba(255,93,108,0.4)' : '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Só na Adquirente</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 700, color: kpi.soAdquirente > 0 ? 'var(--gold)' : 'var(--muted)' }}>
+              {kpi.soAdquirente.toLocaleString('pt-BR')}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 2 }}>{fmtMoeda(kpi.valorSoAdquirente)} não encontrados no ERP</div>
+          </div>
+          <div style={{ background: 'var(--panel)', border: kpi.soErp > 0 ? '1px solid rgba(255,93,108,0.4)' : '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Só no ERP</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 700, color: kpi.soErp > 0 ? 'var(--gold)' : 'var(--muted)' }}>
+              {kpi.soErp.toLocaleString('pt-BR')}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 2 }}>{fmtMoeda(kpi.valorSoErp)} sem registro na adquirente</div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-tabs de resultado */}
+      {result && (
+        <>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--sp-4)', borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+            {([
+              { key: 'resumo',     label: `Resumo por Dia (${result.resumoPorDia.length})` },
+              { key: 'divergentes',label: `Divergências de Valor (${result.divergentes.length})` },
+              { key: 'soAdq',      label: `Só Adquirente (${result.soAdquirente.length})` },
+              { key: 'soErp',      label: `Só ERP (${result.soErp.length})` },
+            ] as const).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setSecao(key)}
+                style={{
+                  background: 'none', border: 'none',
+                  borderBottom: secao === key ? '2px solid var(--teal)' : '2px solid transparent',
+                  color: secao === key ? 'var(--teal)' : 'var(--muted)',
+                  cursor: 'pointer', fontFamily: 'var(--font-ui)',
+                  fontSize: '0.76rem', fontWeight: secao === key ? 600 : 400,
+                  padding: '6px 12px', marginBottom: -1,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Resumo por Dia ── */}
+          {secao === 'resumo' && (
+            <div className="transactions-section">
+              <div style={{ overflowX: 'auto' }}>
+                <table className="trn-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th className="right">Qtd Adq.</th>
+                      <th className="right">Valor Adq.</th>
+                      <th className="right">Qtd ERP</th>
+                      <th className="right">Valor ERP</th>
+                      <th className="right">Δ Qtd</th>
+                      <th className="right">Δ Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.resumoPorDia.map(d => {
+                      const temDif = Math.abs(d.difValor) > 0.01 || d.difQtd !== 0;
+                      return (
+                        <tr key={d.data} style={{ background: temDif ? 'rgba(255,93,108,0.04)' : undefined }}>
+                          <td className="date-cell">{new Date(d.data + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{d.qtdAdquirente}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(d.valorAdquirente)}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{d.qtdErp}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(d.valorErp)}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: d.difQtd !== 0 ? 'var(--red)' : 'var(--muted)' }}>
+                            {d.difQtd > 0 ? `+${d.difQtd}` : d.difQtd}
+                          </td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: Math.abs(d.difValor) > 0.01 ? (d.difValor > 0 ? 'var(--teal)' : 'var(--red)') : 'var(--muted)' }}>
+                            {d.difValor > 0.01 ? `+${fmtMoeda(d.difValor)}` : fmtMoeda(d.difValor)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {result.resumoPorDia.length > 1 && (() => {
+                    const totAdqQtd = result.resumoPorDia.reduce((a, d) => a + d.qtdAdquirente, 0);
+                    const totAdqVal = result.resumoPorDia.reduce((a, d) => a + d.valorAdquirente, 0);
+                    const totErpQtd = result.resumoPorDia.reduce((a, d) => a + d.qtdErp, 0);
+                    const totErpVal = result.resumoPorDia.reduce((a, d) => a + d.valorErp, 0);
+                    const difQtdT   = totAdqQtd - totErpQtd;
+                    const difValT   = Math.round((totAdqVal - totErpVal) * 100) / 100;
+                    return (
+                      <tfoot>
+                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                          <td style={{ color: 'var(--text-soft)', fontSize: '0.72rem', padding: '6px 8px' }}>TOTAL</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{totAdqQtd}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(totAdqVal)}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{totErpQtd}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(totErpVal)}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: difQtdT !== 0 ? 'var(--red)' : 'var(--muted)' }}>
+                            {difQtdT > 0 ? `+${difQtdT}` : difQtdT}
+                          </td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: Math.abs(difValT) > 0.01 ? 'var(--red)' : 'var(--muted)' }}>
+                            {difValT > 0.01 ? `+${fmtMoeda(difValT)}` : fmtMoeda(difValT)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── Divergências de Valor ── */}
+          {secao === 'divergentes' && (
+            result.divergentes.length === 0 ? (
+              <div className="empty-state" style={{ padding: 'var(--sp-8)' }}>
+                <div className="empty-state-title" style={{ color: 'var(--teal)' }}>Nenhuma divergência de valor</div>
+                <div className="empty-state-sub">Todos os matches têm valores dentro da tolerância de R$0,05.</div>
+              </div>
+            ) : (
+              <div className="transactions-section">
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="trn-table">
+                    <thead>
+                      <tr>
+                        <th>Data/Hora</th>
+                        <th>NSU Adq.</th>
+                        <th>NSU ERP</th>
+                        <th>Autorização</th>
+                        <th>Bandeira</th>
+                        <th>PDV ERP</th>
+                        <th>Match via</th>
+                        <th className="right">Adquirente</th>
+                        <th className="right">ERP</th>
+                        <th className="right">Diferença</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.divergentes.map(r => (
+                        <tr key={r.vendaKey} style={{ background: 'rgba(255,93,108,0.04)' }}>
+                          <td className="date-cell" style={{ fontSize: '0.7rem' }}>{fmtDateTime(r.dataHoraVenda)}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.nsuAdq || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.nsuHostErp || r.nsuErp || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.autorizacao || '—'}</td>
+                          <td style={{ fontSize: '0.72rem' }}>{r.bandeira}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.pdvErp || '—'}</td>
+                          <td><span className="tab-badge" style={{ fontSize: '0.6rem' }}>{MATCH_VIA_BADGE[r.matchVia] ?? r.matchVia}</span></td>
+                          <td className="mono-cell cred-cell">{fmtMoeda(r.valorAdquirente)}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(r.valorErp)}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: r.dif > 0 ? 'var(--teal)' : 'var(--red)', fontWeight: 700 }}>
+                            {r.dif > 0 ? `+${fmtMoeda(r.dif)}` : fmtMoeda(r.dif)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          )}
+
+          {/* ── Só na Adquirente ── */}
+          {secao === 'soAdq' && (
+            result.soAdquirente.length === 0 ? (
+              <div className="empty-state" style={{ padding: 'var(--sp-8)' }}>
+                <div className="empty-state-title" style={{ color: 'var(--teal)' }}>Todas as vendas têm correspondência no ERP</div>
+              </div>
+            ) : (
+              <div className="transactions-section">
+                <div style={{ marginBottom: 8, fontSize: '0.72rem', color: 'var(--text-soft)', padding: '0 var(--sp-1)' }}>
+                  Vendas capturadas na adquirente mas <strong>sem registro em pdv.vendatef</strong>.
+                  Pode indicar transações não baixadas no ERP, operações via POS avulso ou cancelamento pendente.
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="trn-table">
+                    <thead>
+                      <tr>
+                        <th>Data/Hora</th>
+                        <th>Gateway</th>
+                        <th>NSU</th>
+                        <th>Autorização</th>
+                        <th>Terminal</th>
+                        <th>Bandeira</th>
+                        <th>Modal.</th>
+                        <th className="right">Valor Bruto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.soAdquirente.map(v => (
+                        <tr key={v.vendaKey}>
+                          <td className="date-cell" style={{ fontSize: '0.7rem' }}>{fmtDateTime(v.dataHoraVenda)}</td>
+                          <td style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>{v.gateway}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{v.nsu || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{v.autorizacao || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{v.terminal || '—'}</td>
+                          <td style={{ fontSize: '0.72rem' }}>{v.bandeira}</td>
+                          <td style={{ fontSize: '0.7rem', color: 'var(--text-soft)' }}>{v.modalidade}</td>
+                          <td className="mono-cell cred-cell">{fmtMoeda(v.valorBruto)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {result.soAdquirente.length > 1 && (
+                      <tfoot>
+                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                          <td colSpan={7} style={{ color: 'var(--text-soft)', fontSize: '0.72rem', padding: '6px 8px' }}>
+                            TOTAL — {result.soAdquirente.length} transações
+                          </td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--gold)' }}>
+                            {fmtMoeda(result.soAdquirente.reduce((a, v) => a + v.valorBruto, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            )
+          )}
+
+          {/* ── Só no ERP ── */}
+          {secao === 'soErp' && (
+            result.soErp.length === 0 ? (
+              <div className="empty-state" style={{ padding: 'var(--sp-8)' }}>
+                <div className="empty-state-title" style={{ color: 'var(--teal)' }}>Todos os registros ERP têm correspondência na adquirente</div>
+              </div>
+            ) : (
+              <div className="transactions-section">
+                <div style={{ marginBottom: 8, fontSize: '0.72rem', color: 'var(--text-soft)', padding: '0 var(--sp-1)' }}>
+                  Vendas em pdv.vendatef <strong>sem registro na adquirente</strong>.
+                  Pode indicar cancelamentos registrados como venda no ERP, operações TEF sem captura efetiva ou dados históricos divergentes.
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="trn-table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Hora</th>
+                        <th>NSU (ERP)</th>
+                        <th>NSU Host</th>
+                        <th>Autorização</th>
+                        <th>PDV</th>
+                        <th>Bandeira</th>
+                        <th className="right">Valor ERP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.soErp.map(r => (
+                        <tr key={r.id}>
+                          <td className="date-cell" style={{ fontSize: '0.7rem' }}>{new Date(r.data + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.hora || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.nsu || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.nsuHost || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.autorizacao || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.pdv || '—'}</td>
+                          <td style={{ fontSize: '0.72rem' }}>{r.nomecartao || '—'}</td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--text-soft)' }}>{fmtMoeda(r.valorErp)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {result.soErp.length > 1 && (
+                      <tfoot>
+                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                          <td colSpan={7} style={{ color: 'var(--text-soft)', fontSize: '0.72rem', padding: '6px 8px' }}>
+                            TOTAL — {result.soErp.length} transações
+                          </td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--gold)' }}>
+                            {fmtMoeda(result.soErp.reduce((a, r) => a + r.valorErp, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            )
+          )}
+        </>
+      )}
+
+      {!result && !loading && (
+        <div className="empty-state" style={{ padding: 'var(--sp-12)' }}>
+          <svg className="empty-state-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5">
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+          </svg>
+          <div className="empty-state-title">Selecione o período e clique em Cruzar</div>
+          <div className="empty-state-sub">Requer conexão ERP configurada em Administração.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────
 
 import { GetnetSandboxPage } from './GetnetSandboxPage';
 
-type Tab = 'importar' | 'vendas' | 'previsao' | 'pagamentos' | 'rastreio' | 'indicadores' | 'taxas' | 'sandbox';
+type Tab = 'importar' | 'vendas' | 'previsao' | 'pagamentos' | 'rastreio' | 'cruzamento' | 'indicadores' | 'taxas' | 'sandbox';
 
 export function AdquirentePage() {
   const [tab, setTab] = useState<Tab>('importar');
@@ -2471,6 +2972,7 @@ export function AdquirentePage() {
         <button style={tabStyle(tab === 'previsao')}    onClick={() => setTab('previsao')}>Previsão</button>
         <button style={tabStyle(tab === 'pagamentos')}  onClick={() => setTab('pagamentos')}>Pagamentos (Realizado)</button>
         <button style={tabStyle(tab === 'rastreio')}    onClick={() => setTab('rastreio')}>Rastreio</button>
+        <button style={tabStyle(tab === 'cruzamento')}  onClick={() => setTab('cruzamento')}>Cruzamento ERP</button>
         <button style={tabStyle(tab === 'indicadores')} onClick={() => setTab('indicadores')}>Indicadores</button>
         <button style={tabStyle(tab === 'taxas')}      onClick={() => setTab('taxas')}>Rel. Taxas</button>
         <button
@@ -2490,6 +2992,7 @@ export function AdquirentePage() {
       {tab === 'previsao'    && <TabPrevisao />}
       {tab === 'pagamentos'  && <TabPagamentos />}
       {tab === 'rastreio'    && <TabRastreio />}
+      {tab === 'cruzamento'  && <TabCruzamentoERP />}
       {tab === 'indicadores' && <TabIndicadores />}
       {tab === 'taxas'       && <TabTaxas />}
       {tab === 'sandbox'     && <GetnetSandboxPage />}

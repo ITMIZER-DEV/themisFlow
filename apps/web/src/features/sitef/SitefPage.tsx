@@ -57,7 +57,7 @@ function ErpSitefSyncPanel() {
       .catch(() => {});
   }, []);
 
-  const isConfigured = empresaConfig?.erpAtivo && Boolean(empresaConfig?.erpHost);
+  const isConfigured = Boolean(empresaConfig?.erpHost);
 
   if (empresaConfig && !isConfigured) {
     return (
@@ -353,6 +353,7 @@ function LotesTable() {
   const lotes       = useSitefStore(s => s.lotes);
   const loading     = useSitefStore(s => s.loadingLotes);
   const setFilter   = useSitefStore(s => s.setFilter);
+  const deleteLote  = useSitefStore(s => s.deleteLote);
 
   if (loading && lotes.length === 0) {
     return <div className="text-muted" style={{ fontSize: '0.8rem', padding: '12px 0' }}>Carregando importações...</div>;
@@ -389,13 +390,32 @@ function LotesTable() {
                 <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--muted)' }}>{l.ignoradas}</td>
                 <td className="mono-cell" style={{ textAlign: 'right' }}>{l._count.transacoes}</td>
                 <td>
-                  <button
-                    className="btn btn-ghost"
-                    style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                    onClick={() => void setFilter({ loteId: l.id })}
-                  >
-                    Ver transações
-                  </button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--teal)' }}
+                      onClick={() => void setFilter({ loteId: l.id, dataInicio: undefined, dataFim: undefined })}
+                      title="Ver todas as transações deste lote"
+                    >
+                      🔍 Ver transações
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--red)' }}
+                      onClick={async () => {
+                        if (window.confirm(`Deseja realmente excluir o lote "${l.arquivo}" e suas ${l._count.transacoes} transações?`)) {
+                          try {
+                            await deleteLote(l.id);
+                          } catch (err) {
+                            alert('Erro ao excluir lote: ' + (err instanceof Error ? err.message : String(err)));
+                          }
+                        }
+                      }}
+                      title="Excluir lote e transações"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -421,8 +441,8 @@ const INPUT_STYLE: CSSProperties = {
 
 function TransacoesFilter() {
   const filter       = useSitefStore(s => s.filter);
+  const lotes        = useSitefStore(s => s.lotes);
   const setFilter    = useSitefStore(s => s.setFilter);
-  const loadTrans    = useSitefStore(s => s.loadTransacoes);
   const total        = useSitefStore(s => s.totalTransacoes);
   const loadingTrans = useSitefStore(s => s.loadingTrans);
 
@@ -471,7 +491,43 @@ function TransacoesFilter() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-3)' }}>
+      {filter.loteId && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+          background: 'rgba(0, 201, 177, 0.12)', border: '1px solid rgba(0, 201, 177, 0.35)',
+          fontSize: '0.75rem', color: 'var(--teal)',
+        }}>
+          <span>📦 Filtrando exclusivamente pelo lote: <strong>{lotes.find(l => l.id === filter.loteId)?.arquivo || filter.loteId}</strong></span>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--teal)' }}
+            onClick={() => void setFilter({ loteId: undefined })}
+          >
+            ✕ Limpar filtro de lote (Ver todas)
+          </button>
+        </div>
+      )}
+
       <div className="actions-row" style={{ gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select
+          value={filter.loteId ?? ''}
+          onChange={e => {
+            const val = e.target.value || undefined;
+            void setFilter({
+              loteId: val,
+              dataInicio: val ? undefined : (draft.dataInicio || undefined),
+              dataFim: val ? undefined : (draft.dataFim || undefined),
+            });
+          }}
+          style={{ ...INPUT_STYLE, fontFamily: 'var(--font-ui)', cursor: 'pointer', maxWidth: 200 }}
+        >
+          <option value="">Todos os Lotes</option>
+          {lotes.map(l => (
+            <option key={l.id} value={l.id}>{l.arquivo}</option>
+          ))}
+        </select>
+
         <label style={{ fontSize: '0.7rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>De</label>
         <input
           type="date"
@@ -529,20 +585,6 @@ function TransacoesFilter() {
           {loadingTrans ? 'Carregando...' : `${total.toLocaleString('pt-BR')} transações`}
         </span>
       </div>
-
-      {filter.loteId && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>Filtrando por lote:</span>
-          <span style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-soft)' }}>{filter.loteId}</span>
-          <button
-            className="btn btn-ghost"
-            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-            onClick={() => void loadTrans({ loteId: undefined, page: 1 })}
-          >
-            ✕ Remover
-          </button>
-        </div>
-      )}
     </div>
   );
 }

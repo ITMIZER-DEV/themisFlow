@@ -86,6 +86,8 @@ type SitefState = {
   loadTransacoes: (patch?: Partial<TransacoesFilter>) => Promise<void>;
   /** Parseia o arquivo localmente e envia ao backend. */
   importXLS: (file: File) => Promise<SitefImportResult>;
+  /** Apaga lote e suas transações associadas. */
+  deleteLote: (id: string) => Promise<void>;
   /** Atualiza filtro e recarrega transações. */
   setFilter: (patch: Partial<TransacoesFilter>) => Promise<void>;
 };
@@ -183,6 +185,16 @@ export const useSitefStore = create<SitefState>((set, get) => ({
       set({ importError: msg, importing: false });
       throw err;
     }
+  },
+
+  deleteLote: async (id: string) => {
+    await api.delete(`/sitef/lotes/${id}`);
+    const currentFilter = get().filter;
+    const patch = currentFilter.loteId === id ? { loteId: undefined, page: 1 } : undefined;
+    await Promise.all([
+      get().loadLotes(),
+      get().loadTransacoes(patch),
+    ]);
   },
 
   setFilter: async (patch) => {

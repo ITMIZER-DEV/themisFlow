@@ -54,6 +54,7 @@ export interface ApiVenda {
   autorizacao:     string;
   nsu:             string;
   terminal:        string;
+  meioCaptura?:    string;
   valorBruto:      string;
   valorTaxa:       string;
   valorLiquido:    string;
@@ -125,6 +126,7 @@ export interface VendasFilter {
   bandeira?:   string;
   modalidade?: string;
   statusConc?: string;
+  meioCaptura?: string;
   dataInicio?: string;
   dataFim?:    string;
   page:        number;
@@ -556,6 +558,7 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
       if (filter.bandeira)   params.bandeira   = filter.bandeira;
       if (filter.modalidade) params.modalidade = filter.modalidade;
       if (filter.statusConc) params.statusConc = filter.statusConc;
+      if (filter.meioCaptura) params.meioCaptura = filter.meioCaptura;
       if (filter.dataInicio) params.dataInicio = filter.dataInicio;
       if (filter.dataFim)    params.dataFim    = filter.dataFim;
 

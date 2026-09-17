@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import pg from 'pg';
 import { conciliaAdquirenteComSitef, rastreiaTransacao } from '@themisflow/core';
+
+const { Client: PgClient } = pg;
 
 // Helper para criar intervalo de datas respeitando o dia local inteiro
 function dateRangeCondition(dataInicio?: string, dataFim?: string) {
@@ -81,6 +84,7 @@ const vendasQuerySchema = z.object({
   modalidade: z.string().optional(),
   status:     z.string().optional(),
   statusConc: z.string().optional(),
+  meioCaptura: z.string().optional(),
   dataInicio: z.string().optional(),
   dataFim:    z.string().optional(),
   page:  z.coerce.number().int().min(1).default(1),
@@ -592,7 +596,7 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
     const q = vendasQuerySchema.safeParse(req.query);
     if (!q.success) return reply.status(400).send({ success: false, error: q.error.message });
 
-    const { gateway, loteId, bandeira, modalidade, status, statusConc,
+    const { gateway, loteId, bandeira, modalidade, status, statusConc, meioCaptura,
             dataInicio, dataFim, page, limit } = q.data;
 
     const where = {
@@ -602,6 +606,7 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
       ...(modalidade && { modalidade }),
       ...(status     && { status }),
       ...(statusConc && { statusConc }),
+      ...(meioCaptura && { meioCaptura }),
       ...((dataInicio || dataFim) && {
         dataHoraVenda: dateRangeCondition(dataInicio, dataFim),
       }),
@@ -1648,6 +1653,292 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
       });
     },
   );
+
+  // ── POST /api/adquirente/cruzamento-erp ──────────────────────────────
+  // Cruza AdquirenteVenda (adquirente) × pdv.vendatef (ERP) por NSU/Autorização
+  // e devolve matches, somente-adquirente, somente-ERP e divergências de valor.
+  fastify.post<{ Body: unknown }>('/cruzamento-erp', { preHandler: pre }, async (req, reply) => {
+    const schema = z.object({
+      dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      dataFim:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      gateway:    z.string().optional(),
+    });
+    const q = schema.safeParse(req.body);
+    if (!q.success) return reply.status(400).send({ success: false, error: q.error.message });
+
+    const { dataInicio, dataFim, gateway } = q.data;
+
+    // ── 1. Busca vendas da adquirente ────────────────────────────────
+    const whereVenda = {
+      status: 'APROVADA',
+      ...(gateway && { gateway }),
+      ...((dataInicio || dataFim) && {
+        dataHoraVenda: dateRangeCondition(dataInicio, dataFim),
+      }),
+    };
+
+    const vendas = await fastify.prisma.adquirenteVenda.findMany({
+      where:   whereVenda,
+      select: {
+        idempotencyKey: true,
+        nsu: true,
+        autorizacao: true,
+        terminal: true,
+        bandeira: true,
+        modalidade: true,
+        parcelas: true,
+        valorBruto: true,
+        dataHoraVenda: true,
+        gateway: true,
+      },
+      orderBy: { dataHoraVenda: 'asc' },
+    });
+
+    // ── 2. Busca vendas TEF do ERP (pdv.vendatef) ────────────────────
+    const erpConfig = await fastify.prisma.empresaConfig.findUnique({ where: { id: 'default' } });
+    if (!erpConfig?.erpHost || !erpConfig?.erpDatabase || !erpConfig?.erpUsuario) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Banco do ERP não configurado. Configure em Administração → Configuração da Empresa.',
+      });
+    }
+
+    const erpClient = new PgClient({
+      host:     erpConfig.erpHost,
+      port:     erpConfig.erpPorta,
+      database: erpConfig.erpDatabase,
+      user:     erpConfig.erpUsuario,
+      password: erpConfig.erpSenha || undefined,
+      ssl:      erpConfig.erpSsl ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 8000,
+      options:  '-c default_transaction_read_only=on',
+    });
+
+    let erpRows: Array<{
+      id: unknown; nsu: string; nsu_host: string; autorizacao: string;
+      valor: number; nomecartao: string; parcelas: number;
+      pdv: string; data: string; hora: string;
+    }> = [];
+
+    try {
+      await erpClient.connect();
+
+      const colsRes = await erpClient.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = 'pdv' AND table_name = 'vendatef'`,
+      );
+      const colSet = new Set(colsRes.rows.map((c: { column_name: string }) => c.column_name.toLowerCase()));
+
+      const pdvExpr    = colSet.has('ecf')              ? 'ecf::text as pdv'            : colSet.has('pdv')           ? 'pdv::text as pdv'            : "'1' as pdv";
+      const nsuExpr    = colSet.has('nsusitef')          ? 'nsusitef::text as nsu'        : colSet.has('nsu')           ? 'nsu::text as nsu'             : "'' as nsu";
+      const nsuHostExpr= colSet.has('nsuhost')           ? 'nsuhost::text as nsu_host'    : colSet.has('nsu_host')      ? 'nsu_host::text as nsu_host'   : "'' as nsu_host";
+      const authExpr   = colSet.has('codigoautorizacao') ? 'codigoautorizacao as autorizacao' : colSet.has('autorizacao') ? 'autorizacao'               : "'' as autorizacao";
+      const cardExpr   = colSet.has('nomecartao')        ? 'nomecartao'                   : colSet.has('bandeira')      ? 'bandeira as nomecartao'       : "'CARTAO' as nomecartao";
+      const parcExpr   = colSet.has('numeroparcela')     ? 'numeroparcela as parcelas'    : colSet.has('parcelas')      ? 'parcelas'                     : '1 as parcelas';
+      const statusFilter = colSet.has('id_situacaotef')  ? '(id_situacaotef = 1)'         : '(cancelado IS NULL OR cancelado = FALSE)';
+
+      const erpResult = await erpClient.query(
+        `SELECT id, ${pdvExpr}, data::text as data, hora::text as hora,
+                ${nsuExpr}, ${nsuHostExpr}, ${authExpr},
+                valor::float as valor, ${cardExpr}, ${parcExpr}
+         FROM pdv.vendatef
+         WHERE ${statusFilter}
+           AND ($1::text IS NULL OR data >= $1::date)
+           AND ($2::text IS NULL OR data <= $2::date)
+         ORDER BY data ASC, hora ASC`,
+        [dataInicio || null, dataFim || null],
+      );
+
+      erpRows = erpResult.rows;
+      await erpClient.end();
+    } catch (err: unknown) {
+      try { await erpClient.end(); } catch {}
+      const msg = err instanceof Error ? err.message : 'Erro ao consultar ERP';
+      return reply.status(500).send({ success: false, error: `ERP: ${msg}` });
+    }
+
+    // ── 3. Índices para cross-match ──────────────────────────────────
+    // Adquirente: por NSU e por autorizacao
+    const aqByNsu  = new Map<string, typeof vendas[0]>();
+    const aqByAuth = new Map<string, typeof vendas[0]>();
+    for (const v of vendas) {
+      if (v.nsu)        aqByNsu.set(v.nsu.trim(),         v);
+      if (v.autorizacao) aqByAuth.set(v.autorizacao.trim(), v);
+    }
+
+    // ERP: por nsu_host (link principal com adquirente) e nsu e autorizacao
+    const erpByNsuHost = new Map<string, typeof erpRows[0]>();
+    const erpByNsu     = new Map<string, typeof erpRows[0]>();
+    const erpByAuth    = new Map<string, typeof erpRows[0]>();
+    for (const r of erpRows) {
+      if (r.nsu_host?.trim()) erpByNsuHost.set(r.nsu_host.trim(), r);
+      if (r.nsu?.trim())      erpByNsu.set(r.nsu.trim(),           r);
+      if (r.autorizacao?.trim()) erpByAuth.set(r.autorizacao.trim(), r);
+    }
+
+    // ── 4. Cross-match ───────────────────────────────────────────────
+    type MatchResult = {
+      vendaKey:         string;
+      nsuAdq:           string | null;
+      nsuErp:           string | null;
+      nsuHostErp:       string | null;
+      autorizacao:      string | null;
+      valorAdquirente:  number;
+      valorErp:         number;
+      dif:              number;
+      matchVia:         string;
+      bandeira:         string;
+      dataHoraVenda:    string;
+      pdvErp:           string;
+    };
+
+    const matches:       MatchResult[] = [];
+    const divergentes:   MatchResult[] = [];
+    const matchedErpIds  = new Set<unknown>();
+
+    for (const v of vendas) {
+      const nsu  = v.nsu?.trim()  ?? '';
+      const auth = v.autorizacao?.trim() ?? '';
+
+      let erpRow: typeof erpRows[0] | undefined;
+      let matchVia = '';
+
+      // NSU Host (mais confiável: nsu_host do ERP = nsu do adquirente)
+      if (nsu && erpByNsuHost.has(nsu)) {
+        erpRow = erpByNsuHost.get(nsu); matchVia = 'NSU_HOST';
+      }
+      // NSU direto
+      if (!erpRow && nsu && erpByNsu.has(nsu)) {
+        erpRow = erpByNsu.get(nsu); matchVia = 'NSU';
+      }
+      // Autorização
+      if (!erpRow && auth && erpByAuth.has(auth)) {
+        erpRow = erpByAuth.get(auth); matchVia = 'AUTORIZACAO';
+      }
+
+      if (!erpRow) continue; // sem match → soAdquirente (processado depois)
+
+      matchedErpIds.add(erpRow.id);
+
+      const valorAdq = Number(v.valorBruto);
+      const valorErp = Number(erpRow.valor);
+      const dif = Math.round((valorAdq - valorErp) * 100) / 100;
+
+      const row: MatchResult = {
+        vendaKey:        v.idempotencyKey,
+        nsuAdq:          v.nsu,
+        nsuErp:          erpRow.nsu || null,
+        nsuHostErp:      erpRow.nsu_host || null,
+        autorizacao:     v.autorizacao || erpRow.autorizacao || null,
+        valorAdquirente: valorAdq,
+        valorErp,
+        dif,
+        matchVia,
+        bandeira:        v.bandeira,
+        dataHoraVenda:   v.dataHoraVenda.toISOString(),
+        pdvErp:          erpRow.pdv || '',
+      };
+
+      if (Math.abs(dif) > 0.05) {
+        divergentes.push(row);
+      } else {
+        matches.push(row);
+      }
+    }
+
+    // ── 5. Somente Adquirente (sem match) ────────────────────────────
+    const soAdquirente = vendas
+      .filter(v => {
+        const nsu  = v.nsu?.trim()  ?? '';
+        const auth = v.autorizacao?.trim() ?? '';
+        return !(
+          (nsu  && erpByNsuHost.has(nsu))  ||
+          (nsu  && erpByNsu.has(nsu))      ||
+          (auth && erpByAuth.has(auth))
+        );
+      })
+      .map(v => ({
+        vendaKey:      v.idempotencyKey,
+        nsu:           v.nsu,
+        autorizacao:   v.autorizacao,
+        terminal:      v.terminal,
+        bandeira:      v.bandeira,
+        modalidade:    v.modalidade,
+        parcelas:      v.parcelas,
+        valorBruto:    Number(v.valorBruto),
+        dataHoraVenda: v.dataHoraVenda.toISOString(),
+        gateway:       v.gateway,
+      }));
+
+    // ── 6. Somente ERP (sem match) ────────────────────────────────────
+    const soErp = erpRows
+      .filter(r => !matchedErpIds.has(r.id))
+      .map(r => ({
+        id:           String(r.id),
+        nsu:          r.nsu || null,
+        nsuHost:      r.nsu_host || null,
+        autorizacao:  r.autorizacao || null,
+        pdv:          r.pdv || null,
+        nomecartao:   r.nomecartao || null,
+        parcelas:     Number(r.parcelas) || 1,
+        valorErp:     Number(r.valor),
+        data:         r.data,
+        hora:         r.hora,
+      }));
+
+    // ── 7. Resumo por dia ────────────────────────────────────────────
+    const diaMapAdq = new Map<string, { qtd: number; valor: number }>();
+    for (const v of vendas) {
+      const d = v.dataHoraVenda.toISOString().slice(0, 10);
+      const e = diaMapAdq.get(d) ?? { qtd: 0, valor: 0 };
+      e.qtd++; e.valor = Math.round((e.valor + Number(v.valorBruto)) * 100) / 100;
+      diaMapAdq.set(d, e);
+    }
+    const diaMapErp = new Map<string, { qtd: number; valor: number }>();
+    for (const r of erpRows) {
+      const d = r.data.slice(0, 10);
+      const e = diaMapErp.get(d) ?? { qtd: 0, valor: 0 };
+      e.qtd++; e.valor = Math.round((e.valor + Number(r.valor)) * 100) / 100;
+      diaMapErp.set(d, e);
+    }
+    const allDias = new Set([...diaMapAdq.keys(), ...diaMapErp.keys()]);
+    const resumoPorDia = [...allDias].sort().map(d => {
+      const adq = diaMapAdq.get(d) ?? { qtd: 0, valor: 0 };
+      const erp = diaMapErp.get(d) ?? { qtd: 0, valor: 0 };
+      return {
+        data:             d,
+        qtdAdquirente:    adq.qtd,
+        valorAdquirente:  adq.valor,
+        qtdErp:           erp.qtd,
+        valorErp:         erp.valor,
+        difQtd:           adq.qtd - erp.qtd,
+        difValor:         Math.round((adq.valor - erp.valor) * 100) / 100,
+      };
+    });
+
+    return reply.send({
+      success: true,
+      periodo:  { dataInicio, dataFim },
+      kpis: {
+        totalAdquirente:  vendas.length,
+        totalErp:         erpRows.length,
+        matches:          matches.length,
+        divergentes:      divergentes.length,
+        soAdquirente:     soAdquirente.length,
+        soErp:            soErp.length,
+        valorSoAdquirente: soAdquirente.reduce((a, v) => a + v.valorBruto, 0),
+        valorSoErp:        soErp.reduce((a, r) => a + r.valorErp, 0),
+        taxaMatch:         vendas.length > 0
+          ? Math.round(((matches.length + divergentes.length) / vendas.length) * 10000) / 100
+          : 0,
+      },
+      resumoPorDia,
+      matches:      matches.slice(0, 500),
+      divergentes,
+      soAdquirente: soAdquirente.slice(0, 500),
+      soErp:        soErp.slice(0, 500),
+    });
+  });
 
   // ── Amostras do Extrato Getnet EDI V10 para o Sandbox ─────────────
   fastify.get('/getnet/samples/:sampleName', async (req, reply) => {

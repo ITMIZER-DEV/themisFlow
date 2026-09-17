@@ -498,7 +498,7 @@ export function EmpresaConfigPage() {
             <label style={labelStyle}>Como os dados do ERP serão obtidos?</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 4 }}>
               <div
-                onClick={() => setForm(f => ({ ...f, erpTipoIntegracao: 'BANCO' }))}
+                onClick={() => setForm(f => ({ ...f, erpTipoIntegracao: 'BANCO', erpAtivo: true }))}
                 style={{
                   padding: '12px 14px', borderRadius: 'var(--radius-sm)',
                   border: `2px solid ${form.erpTipoIntegracao === 'BANCO' ? 'var(--teal)' : 'var(--border)'}`,
@@ -522,7 +522,7 @@ export function EmpresaConfigPage() {
               </div>
 
               <div
-                onClick={() => setForm(f => ({ ...f, erpTipoIntegracao: 'PLANILHA' }))}
+                onClick={() => setForm(f => ({ ...f, erpTipoIntegracao: 'PLANILHA', erpAtivo: false }))}
                 style={{
                   padding: '12px 14px', borderRadius: 'var(--radius-sm)',
                   border: `2px solid ${form.erpTipoIntegracao === 'PLANILHA' ? 'var(--gold)' : 'var(--border)'}`,
