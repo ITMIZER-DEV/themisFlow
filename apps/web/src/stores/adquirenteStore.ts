@@ -798,6 +798,7 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
       if (f.bandeira)   params.bandeira   = f.bandeira;
       if (f.modalidade) params.modalidade = f.modalidade;
       if (f.statusConc) params.statusConc = f.statusConc;
+      if (f.meioCaptura) params.meioCaptura = f.meioCaptura;
       if (f.dataInicio) params.dataInicio = f.dataInicio;
       if (f.dataFim)    params.dataFim    = f.dataFim;
 

@@ -9,6 +9,7 @@ import {
 import { fmtDate, fmtDateTime } from '../../lib/date';
 import { exportTaxasCSV, downloadCSV } from '../../lib/csv';
 import { api } from '../../services/api';
+import * as XLSX from 'xlsx';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -691,9 +692,101 @@ function TabVendas() {
   const loadVendas      = useAdquirenteStore(s => s.loadVendas);
   const setFilter       = useAdquirenteStore(s => s.setVendasFilter);
   const loadResumo      = useAdquirenteStore(s => s.loadResumoVendas);
+  const resumo          = useAdquirenteStore(s => s.resumoVendas);
   const [pagamentoKey, setPagamentoKey] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const totalPages = Math.ceil(total / filter.limit);
+
+  // Totalizadores consolidados
+  const pageBruto = vendas.reduce((acc, v) => acc + (parseFloat(v.valorBruto) || 0), 0);
+  const pageTaxa  = vendas.reduce((acc, v) => acc + Math.abs(parseFloat(v.valorTaxa) || 0), 0);
+  const pageLiq   = vendas.reduce((acc, v) => acc + (parseFloat(v.valorLiquido) || 0), 0);
+
+  const displayQtd = resumo?.totais?.qtd ?? total;
+  const displayBruto = resumo?.totais?.totalBruto ?? pageBruto;
+  const displayTaxa = resumo?.totais?.totalTaxa ?? pageTaxa;
+  const displayLiquido = resumo?.totais?.totalLiquido ?? pageLiq;
+  const displayTaxaMedia = displayBruto > 0 ? (displayTaxa / displayBruto) * 100 : 0;
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const params: Record<string, string | number> = {
+        page: 1,
+        limit: 25000,
+      };
+      if (filter.gateway)    params.gateway    = filter.gateway;
+      if (filter.loteId)     params.loteId     = filter.loteId;
+      if (filter.bandeira)   params.bandeira   = filter.bandeira;
+      if (filter.modalidade) params.modalidade = filter.modalidade;
+      if (filter.statusConc) params.statusConc = filter.statusConc;
+      if (filter.meioCaptura) params.meioCaptura = filter.meioCaptura;
+      if (filter.dataInicio) params.dataInicio = filter.dataInicio;
+      if (filter.dataFim)    params.dataFim    = filter.dataFim;
+
+      const { data } = await api.get<{ success: boolean; vendas: any[]; total: number }>(
+        '/adquirente/vendas', { params },
+      );
+
+      const rowsToExport = (data.vendas && data.vendas.length > 0) ? data.vendas : vendas;
+
+      if (rowsToExport.length === 0) {
+        alert('Nenhuma venda encontrada para exportar com os filtros atuais.');
+        return;
+      }
+
+      const excelRows = rowsToExport.map(v => ({
+        'Data/Hora Venda': fmtDateTime(v.dataHoraVenda),
+        'Gateway': v.gateway,
+        'Meio de Captura': v.meioCaptura || 'TEF',
+        'NSU': v.nsu,
+        'Bandeira': v.bandeira,
+        'Modalidade': v.modalidade,
+        'Forma de Pagamento': v.formaPagamento || '',
+        'Parcelas': `${v.parcelas || 1}x`,
+        'Cartão': `••••${v.cartaoMascarado ? v.cartaoMascarado.slice(-4) : ''}`,
+        'Autorização': v.autorizacao || '',
+        'Terminal': v.terminal || '',
+        'Valor Bruto (R$)': parseFloat(v.valorBruto) || 0,
+        'Taxa (R$)': Math.abs(parseFloat(v.valorTaxa) || 0),
+        'Valor Líquido (R$)': parseFloat(v.valorLiquido) || 0,
+        'Status Venda': v.status,
+        'Status Conciliação': v.statusConc,
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(excelRows);
+
+      ws['!cols'] = [
+        { wch: 18 }, // Data/Hora
+        { wch: 12 }, // Gateway
+        { wch: 15 }, // Meio
+        { wch: 12 }, // NSU
+        { wch: 12 }, // Bandeira
+        { wch: 12 }, // Modalidade
+        { wch: 20 }, // Forma Pgto
+        { wch: 10 }, // Parcelas
+        { wch: 12 }, // Cartão
+        { wch: 14 }, // Autorização
+        { wch: 12 }, // Terminal
+        { wch: 16 }, // Bruto
+        { wch: 14 }, // Taxa
+        { wch: 16 }, // Líquido
+        { wch: 14 }, // Status
+        { wch: 18 }, // Status Conc
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Vendas');
+
+      const dStr = filter.dataInicio ? `${filter.dataInicio}_a_${filter.dataFim || 'hoje'}` : new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `vendas_adquirente_${dStr}.xlsx`);
+    } catch (err: unknown) {
+      alert('Erro ao exportar vendas para Excel: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const selStyle: React.CSSProperties = {
     background: 'var(--panel)', border: '1px solid var(--border)',
@@ -751,6 +844,128 @@ function TabVendas() {
         </span>
       </div>
 
+      {/* Card de Totalizadores Acima de Vendas Adquirente */}
+      <div style={{
+        background: 'var(--panel)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        padding: '16px 20px',
+        marginBottom: 'var(--sp-4)',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          borderBottom: '1px solid var(--border)',
+          paddingBottom: 12,
+          marginBottom: 14,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.2rem' }}>📊</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>
+                Totalizadores das Vendas Filtradas
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 2 }}>
+                Valores consolidados sobre o total de {displayQtd.toLocaleString('pt-BR')} vendas
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || total === 0}
+            className="btn btn-teal"
+            style={{
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              padding: '6px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: exporting || total === 0 ? 'not-allowed' : 'pointer',
+              opacity: exporting || total === 0 ? 0.6 : 1,
+            }}
+          >
+            <span>📥</span>
+            {exporting ? 'Exportando Excel...' : 'Exportar para Excel (.xlsx)'}
+          </button>
+        </div>
+
+        {/* 4 Cards de Métricas */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          <div style={{
+            background: 'var(--panel-alt)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '12px 16px',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              TRANSAÇÕES
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text)' }}>
+              {displayQtd.toLocaleString('pt-BR')}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 3 }}>
+              vendas filtradas
+            </div>
+          </div>
+
+          <div style={{
+            background: 'var(--panel-alt)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '12px 16px',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              VOLUME BRUTO
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--teal)' }}>
+              {fmtMoeda(displayBruto)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 3 }}>
+              faturamento bruto
+            </div>
+          </div>
+
+          <div style={{
+            background: 'var(--panel-alt)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '12px 16px',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              TAXAS PAGAS
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--red)' }}>
+              {fmtMoeda(displayTaxa)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--gold)', marginTop: 3, fontWeight: 600 }}>
+              média {fmtPct(displayTaxaMedia)}
+            </div>
+          </div>
+
+          <div style={{
+            background: 'var(--panel-alt)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '12px 16px',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              VALOR LÍQUIDO
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--teal)' }}>
+              {fmtMoeda(displayLiquido)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: 3 }}>
+              líquido a receber
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Tabela */}
       {vendas.length === 0 && !loading ? (
         <div className="transactions-section">
@@ -766,7 +981,18 @@ function TabVendas() {
         <div className="transactions-section">
           <div className="transactions-header">
             <span className="transactions-title">Vendas Adquirente</span>
-            <span className="transactions-count">{vendas.length} de {total.toLocaleString('pt-BR')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="transactions-count">{vendas.length} de {total.toLocaleString('pt-BR')}</span>
+              <button
+                onClick={handleExportExcel}
+                disabled={exporting || total === 0}
+                className="btn btn-ghost"
+                style={{ fontSize: '0.72rem', padding: '2px 8px', color: 'var(--teal)', display: 'flex', alignItems: 'center', gap: 4 }}
+                title="Exportar todas as vendas filtradas para Excel (.xlsx)"
+              >
+                <span>📥</span> Excel
+              </button>
+            </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="trn-table">

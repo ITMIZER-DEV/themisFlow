@@ -88,7 +88,7 @@ const vendasQuerySchema = z.object({
   dataInicio: z.string().optional(),
   dataFim:    z.string().optional(),
   page:  z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
+  limit: z.coerce.number().int().min(1).max(25000).default(100),
 });
 
 const recebiveisQuerySchema = z.object({
@@ -116,7 +116,9 @@ const resumoQuerySchema = z.object({
   loteId:     z.string().optional(),
   bandeira:   z.string().optional(),
   modalidade: z.string().optional(),
+  status:     z.string().optional(),
   statusConc: z.string().optional(),
+  meioCaptura: z.string().optional(),
   dataInicio: z.string().optional(),
   dataFim:    z.string().optional(),
 });
@@ -819,15 +821,16 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
     const q = resumoQuerySchema.safeParse(req.query);
     if (!q.success) return reply.status(400).send({ success: false, error: q.error.message });
 
-    const { gateway, loteId, bandeira, modalidade, statusConc, dataInicio, dataFim } = q.data;
+    const { gateway, loteId, bandeira, modalidade, status, statusConc, meioCaptura, dataInicio, dataFim } = q.data;
 
     const where = {
-      status: 'APROVADA',
+      ...(status     ? { status } : { status: 'APROVADA' }),
       ...(gateway    && { gateway }),
       ...(loteId     && { loteId }),
       ...(bandeira   && { bandeira }),
       ...(modalidade && { modalidade }),
       ...(statusConc && { statusConc }),
+      ...(meioCaptura && { meioCaptura }),
       ...((dataInicio || dataFim) && {
         dataHoraVenda: dateRangeCondition(dataInicio, dataFim),
       }),
