@@ -1,20 +1,20 @@
 {
   "name": "ThemisFlow",
-  "version": "0.2.0",
-  "displayVersion": "v0.2.0+7fe3d62-dirty",
-  "buildTime": "2026-10-01T02:42:00.289Z",
-  "buildTimeBR": "30/09/2026 23:42:00",
+  "version": "0.2.1",
+  "displayVersion": "v0.2.1+06783e0-dirty",
+  "buildTime": "2026-10-01T10:24:38.880Z",
+  "buildTimeBR": "01/10/2026 07:24:38",
   "git": {
-    "commit": "7fe3d62",
-    "fullCommit": "7fe3d62cf1263bd315ba92baaeb7097cbb05688e",
+    "commit": "06783e0",
+    "fullCommit": "06783e002db07be37e868741a24808b68c47afd2",
     "branch": "main",
     "tag": null,
-    "latestTag": "v0.2.0",
-    "commitDate": "2026-09-17T14:38:52-03:00",
-    "commitDateBR": "17/09/2026 14:38:52",
-    "commitMessage": "feat(adquirente): card totalizadores de vendas e exportacao para excel (.xlsx)",
-    "commitCount": 8,
+    "latestTag": "v0.2.1",
+    "commitDate": "2026-09-30T23:43:47-03:00",
+    "commitDateBR": "30/09/2026 23:43:47",
+    "commitMessage": "feat(voucher,contratos): suporte completo a Pluxee e Alelo com taxas segmentadas, encargos operacionais e auditoria de guias",
+    "commitCount": 9,
     "isDirty": true
   },
-  "environment": "production"
+  "environment": "development"
 }

@@ -1,5 +1,18 @@
 [
   {
+    "version": "v0.2.1",
+    "date": "01/10/2026",
+    "title": "Suporte a Pluxee e Alelo com Taxas Segmentadas e Auditoria de Guias",
+    "type": "patch",
+    "highlights": [
+      "Rateio segmentado de MDR por produto para Pluxee e Alelo (PAT 3,60% e Auxílio 6,90%)",
+      "Contabilização de encargos operacionais: Gestão de Pagamentos - Auxílio (R$ 5,99) e Tarifa TOR (R$ 1,22)",
+      "Provisionamento dos contratos piloto Pluxee e Alelo com regras e prazos (D+30)",
+      "Auditoria de guias em /api/adquirente/kpi com confronto contratual por lançamento",
+      "Conservação exata de centavos para fechamento idêntico ao extrato bancário OFX"
+    ]
+  },
+  {
     "version": "v0.2.0",
     "date": "17/09/2026",
     "title": "Suporte a Vouchers Ticket / Edenred & Versionamento Integrado",
