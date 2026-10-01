@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import * as fs from 'node:fs';
 
 import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
@@ -71,9 +72,54 @@ await fastify.register(empresaRoutes,     { prefix: '/api/empresa' });
 await fastify.register(dashboardRoutes,   { prefix: '/api/dashboard' });
 await fastify.register(sftpRoutes,        { prefix: '/api/sftp' });
 
-// ── Health check ──────────────────────────────────────────────────
+// ── Health check & Versão ─────────────────────────────────────────
 fastify.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }));
 fastify.get('/api/health', async () => ({ status: 'ok', ts: new Date().toISOString() }));
+
+const startTime = Date.now();
+
+function getVersionInfo() {
+  try {
+    const versionPath = new URL('./version.json', import.meta.url);
+    const content = fs.readFileSync(versionPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {
+      name: 'ThemisFlow API',
+      version: '0.2.0',
+      displayVersion: 'v0.2.0',
+      git: { commit: 'unknown', branch: 'main' },
+    };
+  }
+}
+
+const versionHandler = async () => {
+  const v = getVersionInfo();
+  let dbStatus = 'connected';
+  try {
+    await fastify.prisma.$queryRawUnsafe('SELECT 1');
+  } catch {
+    dbStatus = 'disconnected';
+  }
+
+  return {
+    ...v,
+    service: 'ThemisFlow API',
+    uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
+    timezone: process.env.TZ || 'America/Sao_Paulo',
+    nodeVersion: process.version,
+    database: {
+      status: dbStatus,
+      client: 'Prisma / PostgreSQL',
+    },
+    duckdb: {
+      status: fastify.duck ? 'ready' : 'unavailable',
+    },
+  };
+};
+
+fastify.get('/version', versionHandler);
+fastify.get('/api/version', versionHandler);
 
 // ── Erro global ───────────────────────────────────────────────────
 fastify.setErrorHandler((error: Error & { statusCode?: number }, _req, reply) => {

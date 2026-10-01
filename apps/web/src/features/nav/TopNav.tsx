@@ -90,7 +90,7 @@ function NavItem({ item }: { item: MenuItemData }) {
   );
 }
 
-export function TopNav() {
+export function TopNav({ onOpenVersion }: { onOpenVersion?: () => void }) {
   const { user, logout } = useAuthStore();
   const { items } = useMenuStore();
   const navigate = useNavigate();
@@ -140,63 +140,72 @@ export function TopNav() {
         </span>
       </NavLink>
 
-      {/* Logomarca ou Nome da Empresa */}
-      {empresa?.logomarca ? (
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 10, borderLeft: '1px solid var(--border)', marginRight: 12 }}>
-          <img src={empresa.logomarca} alt={empresa.nomeFantasia} style={{ maxHeight: 22, maxWidth: 90, objectFit: 'contain' }} />
+      {/* Nome Fantasia da Empresa Configurada */}
+      {empresa?.nomeFantasia && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '0 12px', borderLeft: '1px solid var(--border)', marginRight: 8,
+          fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-soft)',
+          fontFamily: 'var(--font-title)',
+        }}>
+          {empresa.logomarca ? (
+            <img src={empresa.logomarca} alt="Logo" style={{ height: 20, maxWidth: 32, objectFit: 'contain' }} />
+          ) : (
+            <span style={{ color: 'var(--teal)' }}>🏢</span>
+          )}
+          <span>{empresa.nomeFantasia}</span>
         </div>
-      ) : empresa?.nomeFantasia ? (
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 10, borderLeft: '1px solid var(--border)', marginRight: 12 }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {empresa.nomeFantasia}
-          </span>
-        </div>
-      ) : null}
+      )}
 
-      {/* Separador */}
-      <div style={{ width: 1, background: 'var(--border)', margin: '10px 8px' }} />
-
-      {/* Menu items */}
-      <nav style={{ display: 'flex', alignItems: 'stretch', flex: 1, gap: 2 }}>
-        {items.map(item => <NavItem key={item.chave} item={item} />)}
+      {/* Itens do Menu Dinâmico */}
+      <nav style={{ display: 'flex', alignItems: 'stretch', flex: 1 }}>
+        {items.map(item => (
+          <NavItem key={item.chave} item={item} />
+        ))}
       </nav>
 
-      {/* Theme toggle */}
-      <button
-        onClick={toggleTheme}
-        title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 32, height: 32, borderRadius: 'var(--radius-sm)',
-          background: 'none', border: '1px solid var(--border)',
-          cursor: 'pointer', color: 'var(--muted)',
-          transition: 'color var(--transition), border-color var(--transition)',
-          marginRight: 8,
-        }}
-      >
-        {theme === 'dark' ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="5"/>
-            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-          </svg>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-          </svg>
-        )}
-      </button>
+      {/* Lado Direito: Tema + Usuário */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} ref={userMenuRef}>
+        {/* Toggle Dark / Light Theme */}
+        <button
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-soft)', padding: '6px 8px', borderRadius: 'var(--radius-sm)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background .15s, color .15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--panel-alt)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          {theme === 'dark' ? (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          )}
+        </button>
 
-      {/* User dropdown */}
-      <div ref={userMenuRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <button
           onClick={() => setUserMenuOpen(o => !o)}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '4px 10px', borderRadius: 'var(--radius-sm)',
-            background: 'none', border: 'none', cursor: 'pointer',
+            padding: '5px 8px', borderRadius: 'var(--radius-sm)',
+            background: userMenuOpen ? 'var(--panel-alt)' : 'none',
+            border: '1px solid transparent',
+            cursor: 'pointer', transition: 'background .15s',
           }}
         >
           <div style={{
@@ -223,7 +232,7 @@ export function TopNav() {
 
         {userMenuOpen && (
           <div style={{
-            position: 'absolute', top: '100%', right: 0, minWidth: 160, zIndex: 100,
+            position: 'absolute', top: '100%', right: 0, minWidth: 180, zIndex: 100,
             background: 'var(--panel)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)', boxShadow: '0 8px 24px rgba(0,0,0,.4)',
             marginTop: 4, overflow: 'hidden',
@@ -231,6 +240,33 @@ export function TopNav() {
             <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>{user?.email}</div>
             </div>
+
+            {onOpenVersion && (
+              <button
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  onOpenVersion();
+                }}
+                style={{
+                  width: '100%', padding: '9px 14px', textAlign: 'left',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '0.78rem', color: 'var(--text)',
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  borderBottom: '1px solid var(--border)',
+                  transition: 'background .12s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--panel-alt)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                Sobre o ThemisFlow
+              </button>
+            )}
+
             <button
               onClick={() => void handleLogout()}
               style={{
@@ -239,6 +275,8 @@ export function TopNav() {
                 fontSize: '0.78rem', color: 'var(--red)',
                 display: 'flex', alignItems: 'center', gap: 7,
               }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--panel-alt)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

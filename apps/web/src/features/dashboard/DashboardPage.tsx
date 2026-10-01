@@ -3,14 +3,20 @@ import { api } from '../../services/api';
 import { TimelineChart } from './TimelineChart';
 import { DrilldownModal, type DrilldownTipo, type DrilldownFilterParams } from './DrilldownModal';
 
-const GATEWAYS = ['GETNET', 'CIELO', 'STONE', 'REDE', 'PAGSEGURO', 'SUMUP', 'ALELO', 'TICKET', 'VR'];
-const MESES_RAPIDOS = [
-  { label: 'Maio/2026',  val: '2026-05' },
-  { label: 'Junho/2026', val: '2026-06' },
-  { label: 'Julho/2026', val: '2026-07' },
-  { label: 'Agosto/2026', val: '2026-08' },
-  { label: 'Set/2026 (Atual)', val: '2026-09' },
-];
+const GATEWAYS = ['GETNET', 'CIELO', 'STONE', 'REDE', 'PAGSEGURO', 'SUMUP', 'ALELO', 'PLUXEE', 'TICKET', 'VR'];
+
+function buildMesesRapidos() {
+  const hoje = new Date();
+  const NOMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - (5 - i), 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = `${NOMES[d.getMonth()]}/${d.getFullYear()}`;
+    return { label: i === 5 ? `${label} (Atual)` : label, val };
+  });
+}
+const MESES_RAPIDOS = buildMesesRapidos();
+const MES_ATUAL = MESES_RAPIDOS[5].val;
 
 function fmtMoeda(v: number) {
   if (isNaN(v)) return '—';
@@ -23,7 +29,7 @@ function fmtPct(v: number) {
 }
 
 export function DashboardPage() {
-  const [mes, setMes] = useState('2026-05');
+  const [mes, setMes] = useState(MES_ATUAL);
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [gateway, setGateway] = useState('');

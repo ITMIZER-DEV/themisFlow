@@ -1,0 +1,20 @@
+{
+  "name": "ThemisFlow",
+  "version": "0.2.0",
+  "displayVersion": "v0.2.0+7fe3d62-dirty",
+  "buildTime": "2026-10-01T02:42:00.289Z",
+  "buildTimeBR": "30/09/2026 23:42:00",
+  "git": {
+    "commit": "7fe3d62",
+    "fullCommit": "7fe3d62cf1263bd315ba92baaeb7097cbb05688e",
+    "branch": "main",
+    "tag": null,
+    "latestTag": "v0.2.0",
+    "commitDate": "2026-09-17T14:38:52-03:00",
+    "commitDateBR": "17/09/2026 14:38:52",
+    "commitMessage": "feat(adquirente): card totalizadores de vendas e exportacao para excel (.xlsx)",
+    "commitCount": 8,
+    "isDirty": true
+  },
+  "environment": "production"
+}

@@ -144,12 +144,14 @@ async function main() {
   const hashAdmin     = await bcrypt.hash(adminSenha, 12);
 
   const adminEmails = Array.from(new Set([adminEmail, 'admin@itmizer.com.br', 'admin@themisflow.local']));
+  let principalAdminId: string | undefined;
   for (const email of adminEmails) {
     const adminUser = await prisma.user.upsert({
       where: { email },
       update: { nome: adminNome, senha: hashAdmin, ativo: true },
       create: { nome: adminNome, email, senha: hashAdmin, ativo: true },
     });
+    if (!principalAdminId) principalAdminId = adminUser.id;
 
     await prisma.userRole.upsert({
       where: { userId_roleId: { userId: adminUser.id, roleId: roleAdmin.id } },
@@ -193,7 +195,7 @@ async function main() {
         dataInicio: new Date('2026-01-01'),
         ativo: true,
         observacoes: `Contrato inicial gerado para o cliente piloto ${pilotName}. Ajuste as taxas na interface se necessário.`,
-        criadoPor: adminUser.id,
+        criadoPor: principalAdminId,
       },
     });
 
@@ -230,6 +232,150 @@ async function main() {
         },
       });
     }
+  }
+
+  // ── Contrato Inicial de Taxas VR Benefícios ─────────────────────
+  const contratoVrExiste = await prisma.taxaContrato.findFirst({
+    where: { rede: 'VR', ativo: true },
+  });
+
+  if (!contratoVrExiste) {
+    const novoContratoVr = await prisma.taxaContrato.create({
+      data: {
+        nome: `Contrato Piloto VR Benefícios — ${pilotName}`,
+        rede: 'VR',
+        dataInicio: new Date('2026-01-01'),
+        ativo: true,
+        observacoes: `Contrato de taxas para voucher e alimentação da VR Benefícios.`,
+        criadoPor: principalAdminId,
+      },
+    });
+
+    const itensVr = [
+      { tipoPagamento: 'VOUCHER',     bandeira: 'VR', modalidade: 'A_VISTA', taxaMdr: 3.50, prazoRecebimento: 15 },
+      { tipoPagamento: 'ALIMENTACAO', bandeira: 'VR', modalidade: 'A_VISTA', taxaMdr: 3.50, prazoRecebimento: 15 },
+      { tipoPagamento: 'REFEICAO',    bandeira: 'VR', modalidade: 'A_VISTA', taxaMdr: 3.50, prazoRecebimento: 15 },
+    ];
+
+    for (const item of itensVr) {
+      await prisma.taxaItem.create({
+        data: {
+          contratoId: novoContratoVr.id,
+          tipoPagamento: item.tipoPagamento,
+          bandeira: item.bandeira,
+          modalidade: item.modalidade,
+          parcelaMin: 1,
+          parcelaMax: 1,
+          taxaMdr: item.taxaMdr,
+          prazoRecebimento: item.prazoRecebimento,
+        },
+      });
+    }
+  }
+
+  // ── Contrato Inicial de Taxas Pluxee (Benefícios / Sodexo) ───────
+  const contratoPluxeeExiste = await prisma.taxaContrato.findFirst({
+    where: { rede: { in: ['PLUXEE', 'SODEXO'] }, ativo: true },
+  });
+
+  if (!contratoPluxeeExiste) {
+    const novoContratoPluxee = await prisma.taxaContrato.create({
+      data: {
+        nome: `Contrato Piloto Pluxee (Benefícios) — ${pilotName}`,
+        rede: 'PLUXEE',
+        dataInicio: new Date('2026-01-01'),
+        ativo: true,
+        observacoes: `Contrato de taxas para voucher PAT (3,60%) e Auxílio Alimentação (6,90%) da Pluxee/Sodexo.`,
+        criadoPor: principalAdminId,
+      },
+    });
+
+    const itensPluxee = [
+      { tipoPagamento: 'VOUCHER',     bandeira: 'PAT',     modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'VOUCHER',     bandeira: 'AUXILIO', modalidade: 'A_VISTA', taxaMdr: 6.90, prazoRecebimento: 30 },
+      { tipoPagamento: 'VOUCHER',     bandeira: 'PLUXEE',  modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'VOUCHER',     bandeira: 'SODEXO',  modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'ALIMENTACAO', bandeira: 'PLUXEE',  modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'REFEICAO',    bandeira: 'PLUXEE',  modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+    ];
+
+    for (const item of itensPluxee) {
+      await prisma.taxaItem.create({
+        data: {
+          contratoId: novoContratoPluxee.id,
+          tipoPagamento: item.tipoPagamento,
+          bandeira: item.bandeira,
+          modalidade: item.modalidade,
+          parcelaMin: 1,
+          parcelaMax: 1,
+          taxaMdr: item.taxaMdr,
+          prazoRecebimento: item.prazoRecebimento,
+        },
+      });
+    }
+
+    // Tarifa fixa de liquidação / remessa do Auxílio
+    await prisma.taxaEncargo.create({
+      data: {
+        contratoId: novoContratoPluxee.id,
+        descricao: 'Gestão de Pagamentos - Auxílio',
+        tipo: 'POR_OCORRENCIA',
+        valor: 5.99,
+        ativo: true,
+      },
+    });
+  }
+
+  // ── Contrato Inicial de Taxas Alelo ──────────────────────────────
+  const contratoAleloExiste = await prisma.taxaContrato.findFirst({
+    where: { rede: 'ALELO', ativo: true },
+  });
+
+  if (!contratoAleloExiste) {
+    const novoContratoAlelo = await prisma.taxaContrato.create({
+      data: {
+        nome: `Contrato Piloto Alelo (Benefícios) — ${pilotName}`,
+        rede: 'ALELO',
+        dataInicio: new Date('2026-01-01'),
+        ativo: true,
+        observacoes: `Contrato de taxas para voucher PAT (3,60%), Auxílio Alimentação (6,90%) e Tarifa TOR da Alelo.`,
+        criadoPor: principalAdminId,
+      },
+    });
+
+    const itensAlelo = [
+      { tipoPagamento: 'VOUCHER',     bandeira: 'PAT',     modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'VOUCHER',     bandeira: 'AUXILIO', modalidade: 'A_VISTA', taxaMdr: 6.90, prazoRecebimento: 30 },
+      { tipoPagamento: 'VOUCHER',     bandeira: 'ALELO',   modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'ALIMENTACAO', bandeira: 'ALELO',   modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+      { tipoPagamento: 'REFEICAO',    bandeira: 'ALELO',   modalidade: 'A_VISTA', taxaMdr: 3.60, prazoRecebimento: 30 },
+    ];
+
+    for (const item of itensAlelo) {
+      await prisma.taxaItem.create({
+        data: {
+          contratoId: novoContratoAlelo.id,
+          tipoPagamento: item.tipoPagamento,
+          bandeira: item.bandeira,
+          modalidade: item.modalidade,
+          parcelaMin: 1,
+          parcelaMax: 1,
+          taxaMdr: item.taxaMdr,
+          prazoRecebimento: item.prazoRecebimento,
+        },
+      });
+    }
+
+    // Tarifa TOR (Tarifa por Operação de Reembolso do Auxílio)
+    await prisma.taxaEncargo.create({
+      data: {
+        contratoId: novoContratoAlelo.id,
+        descricao: 'Tarifa TOR - Auxílio / Natal / Cultura / Auto',
+        tipo: 'POR_OCORRENCIA',
+        valor: 1.22,
+        ativo: true,
+      },
+    });
   }
 
   // ── Configuração Inicial da Empresa Piloto ───────────────────────
@@ -269,6 +415,13 @@ async function main() {
     { texto: 'REDE ADQUIRENTE',   tipo: 'CARTAO',        bandeira: null, banco: null, prioridade: 6 },
     { texto: 'LIQUIDACAO ADQUIRENTE', tipo: 'CARTAO',   bandeira: null, banco: null, prioridade: 8 },
     { texto: 'CREDITO ADQUIRENTE',    tipo: 'CARTAO',   bandeira: null, banco: null, prioridade: 8 },
+    { texto: 'EDENRED',           tipo: 'CARTAO',        bandeira: 'TICKET', banco: null, prioridade: 8 },
+    { texto: 'TICKET SERVICOS',   tipo: 'CARTAO',        bandeira: 'TICKET', banco: null, prioridade: 8 },
+    { texto: 'TICKET',            tipo: 'CARTAO',        bandeira: 'TICKET', banco: null, prioridade: 7 },
+    { texto: 'VR BENEFICIOS',     tipo: 'CARTAO',        bandeira: 'VR',     banco: null, prioridade: 8 },
+    { texto: 'SODEXO',            tipo: 'CARTAO',        bandeira: 'SODEXO', banco: null, prioridade: 8 },
+    { texto: 'PLUXEE',            tipo: 'CARTAO',        bandeira: 'SODEXO', banco: null, prioridade: 8 },
+    { texto: 'ALELO',             tipo: 'CARTAO',        bandeira: 'ALELO',  banco: null, prioridade: 8 },
 
     // Transferências
     { texto: 'TED',               tipo: 'TRANSFERENCIA', bandeira: null, banco: null, prioridade: 5 },

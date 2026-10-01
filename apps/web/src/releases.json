@@ -1,0 +1,51 @@
+[
+  {
+    "version": "v0.2.0",
+    "date": "17/09/2026",
+    "title": "Suporte a Vouchers Ticket / Edenred & Versionamento Integrado",
+    "type": "minor",
+    "highlights": [
+      "Parser oficial de vendas brutas do Portal Ticket (TAE, TRE, TF, TKE, TCE)",
+      "Parser de 2 níveis para o Extrato de Reembolso Detalhado (lotes PAGAMENTO_REALIZADO e transações analíticas VENDA)",
+      "Discriminação contábil das taxas contratuais: Tarifa por transação, Tarifa de gestão e Taxa TPE",
+      "Padrões de classificação automática no extrato bancário OFX para Edenred e Ticket",
+      "Novo sistema de versionamento contínuo integrado ao Git e modal 'Sobre o ThemisFlow'"
+    ]
+  },
+  {
+    "version": "v0.1.6",
+    "date": "16/09/2026",
+    "title": "Suporte a VR Benefícios & EDI 200 posições",
+    "type": "patch",
+    "highlights": [
+      "Parser de extratos de vendas XLS da VR Benefícios",
+      "Parser de guias de reembolso com valor bruto, taxas e repasse líquido",
+      "Parser de arquivos posicionais EDI TXT (200 posições) de vendas e reembolsos",
+      "Exportação para Excel (.xlsx) dos cards totalizadores de vendas"
+    ]
+  },
+  {
+    "version": "v0.1.5",
+    "date": "15/09/2026",
+    "title": "Módulo SITEF & Sincronização ERP",
+    "type": "minor",
+    "highlights": [
+      "Redesign do controle de acesso (ACL) e permissões por papel",
+      "Importação e conciliação de lotes SiTEF com cruzamento em cascata TEF/POS",
+      "Sincronização de dados ERP e suporte a conector SFTP agendado",
+      "Migração de configurações de empresa multi-tenant"
+    ]
+  },
+  {
+    "version": "v0.1.0",
+    "date": "12/09/2026",
+    "title": "Lançamento ThemisFlow — Núcleo de Conciliação Bancária",
+    "type": "major",
+    "highlights": [
+      "Motor de conciliação bancária OFX × Sistema ERP (R1–R20)",
+      "Classificador de extrato bancário OFX por padrões inteligentes",
+      "Importação Getnet Vendas_Detalhado e Recebivel_Completos (MDR e liquidações)",
+      "Design System ThemisFlow (Dark mode #0b1220, Teal #00c9b1, Gold #f0a500)"
+    ]
+  }
+]

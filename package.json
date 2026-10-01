@@ -1,6 +1,6 @@
 {
   "name": "themisflow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -8,6 +8,12 @@
     "apps/*"
   ],
   "scripts": {
+    "version:gen": "node scripts/generate-version.mjs",
+    "prebuild": "node scripts/generate-version.mjs",
+    "release": "node scripts/release.mjs",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major",
     "test:golden": "node --test reference/fixtures/*.test.mjs",
     "test": "npm run test -w packages/core",
     "test:api": "npm run test -w apps/api",

@@ -2,8 +2,10 @@ import SftpClient from 'ssh2-sftp-client';
 import { Cron } from 'croner';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { parseGetnetEdiFile } from '@themisflow/core';
+
+const defaultPrisma = new PrismaClient();
 
 // Mapa em memória com jobs agendados ativos por ID de configuração
 const activeJobs = new Map<string, Cron>();
@@ -284,7 +286,7 @@ export async function processarConteudoEdiGetnet(
   userId?: string,
   prismaClient?: PrismaClient
 ): Promise<{ loteVendasId?: string; loteRecebiveisId?: string; vendasCount: number; recebiveisCount: number }> {
-  const db = prismaClient || prisma;
+  const db = prismaClient || defaultPrisma;
   const ediResult = parseGetnetEdiFile(fileContent, fileName);
   const dataInicio = ediResult.header?.dataMovimento || new Date().toISOString().substring(0, 10);
   const dataFim = ediResult.header?.dataMovimento || new Date().toISOString().substring(0, 10);
@@ -422,7 +424,7 @@ export async function processarConteudoEdiGetnet(
  * Reprocessa arquivos EDI existentes localmente (em storage/sftp/getnet ou docs/conciliacao/getnet/extratos)
  */
 export async function reprocessarArquivosLocais(fileNames?: string[], prismaClient?: PrismaClient) {
-  const db = prismaClient || prisma;
+  const db = prismaClient || defaultPrisma;
   const dirs = [
     path.resolve(process.cwd(), 'storage/sftp/getnet'),
     path.resolve(process.cwd(), '../../docs/conciliacao/getnet/extratos'),

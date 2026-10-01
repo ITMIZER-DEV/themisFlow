@@ -19,6 +19,8 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
         erpStatus: true,
         erpHost: true,
         erpDatabase: true,
+        pixQrCodeSitefDireto: true,
+        pixQrCodeBancoDesc:   true,
       },
     });
 
@@ -35,6 +37,8 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
           erpStatus: true,
           erpHost: true,
           erpDatabase: true,
+          pixQrCodeSitefDireto: true,
+          pixQrCodeBancoDesc:   true,
         },
       });
     }
@@ -88,6 +92,9 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
       erpSenha: z.string().optional().nullable(),
       erpSsl: z.boolean().default(false),
       erpAtivo: z.boolean().default(false),
+
+      pixQrCodeSitefDireto: z.boolean().default(false),
+      pixQrCodeBancoDesc:   z.string().optional().nullable(),
     });
 
     const parsed = schema.safeParse(req.body);

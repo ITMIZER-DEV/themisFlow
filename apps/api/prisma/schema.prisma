@@ -380,6 +380,10 @@ model EmpresaConfig {
   erpStatus         String?   // "CONECTADO" | "ERRO" | "PENDENTE"
   erpMensagem       String?   @db.Text
 
+  // PIX QR Code via terminal SITEF — liquidação direta no banco, fora do fluxo do adquirente
+  pixQrCodeSitefDireto  Boolean @default(false)
+  pixQrCodeBancoDesc    String? // ex.: "Bradesco CC 0001-1 / Ag 1234"
+
   atualizadoEm      DateTime  @updatedAt
   criadoEm          DateTime  @default(now())
 }

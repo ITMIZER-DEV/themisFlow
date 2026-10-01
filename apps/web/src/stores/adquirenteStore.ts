@@ -3,14 +3,22 @@ import * as XLSX from 'xlsx';
 import {
   parseGetnetVendasRows,
   parseGetnetRecebiveisRows,
-  parseAleloRows,
+  parseAleloVendasRows,
+  parseAleloRecebimentosRows,
+  parseAleloOutrasRows,
+  parseNaipVendasRows,
+  parseNaipRecebimentosRows,
   parseSodexoRows,
+  parseSodexoRecebiveisRows,
+  parsePluxeeVendasRows,
+  parsePluxeePgtosRows,
   parseTicketRows,
   parseVrBeneficiosRows,
-  parseSodexoRecebiveisRows,
   parseVrRecebiveisRows,
+  parseTicketRecebiveisRows,
   parseVrVendasEdi,
   parseVrReembolsosEdi,
+  type PluxeeTaxaSumario,
 } from '@themisflow/core';
 import { api } from '../services/api';
 
@@ -88,25 +96,44 @@ export interface KpiRecebiveisFuturos {
   _sum:       { valorLiquido: string | null };
 }
 
+export interface KpiGuiaAuditoriaLinha {
+  bandeira:          string;
+  modalidade:        string;
+  lancamento?:       string;
+  qtdGuias:          number;
+  totalBruto:        number;
+  totalTaxa:         number;
+  totalLiquido:      number;
+  taxaEfetivaPct:    number;
+  taxaMdrContratada: number | null;
+  divergenciaPct:    number | null;
+  divergenciaReais:  number | null;
+}
+
 export interface KpiData {
   periodo:     { dataInicio: string | undefined; dataFim: string | undefined };
   gateway:     string | undefined;
+  contratoId?: string;
   totais: {
     qtdTransacoes: number;
     totalBruto:    number;
     totalTaxa:     number;
     totalLiquido:  number;
   };
-  taxasEfetivas:     KpiTaxaLinha[];
-  statusConcVendas:  KpiStatusConc[];
-  recebiveisFuturos: KpiRecebiveisFuturos[];
+  taxasEfetivas:       KpiTaxaLinha[];
+  auditoriaGuias?:     KpiGuiaAuditoriaLinha[];
+  encargosContratados?: { descricao: string; tipo: string; valor: number }[];
+  statusConcVendas:    KpiStatusConc[];
+  recebiveisFuturos:   KpiRecebiveisFuturos[];
 }
 
 export interface ImportResult {
-  arquivo:    string;
-  adicionadas: number;
-  atualizadas: number;
-  loteId:     string;
+  arquivo:          string;
+  adicionadas:      number;
+  atualizadas:      number;
+  taxasProjetadas?: number;
+  loteId:           string;
+  resumoTaxas?:     PluxeeTaxaSumario;
 }
 
 export interface ConciliarResult {
@@ -627,10 +654,12 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
 
         // Determina o parser com base no gateway
         let parseFn = parseGetnetVendasRows as (rows: any[][], gateway: string, fname: string) => any;
-        if (gateway === 'ALELO') parseFn = parseAleloRows;
+        if      (gateway === 'ALELO')  parseFn = parseAleloVendasRows  as any;
+        else if (gateway === 'NAIP')   parseFn = parseNaipVendasRows   as any;
+        else if (gateway === 'PLUXEE') parseFn = parsePluxeeVendasRows  as any;
         else if (gateway === 'SODEXO') parseFn = parseSodexoRows;
         else if (gateway === 'TICKET') parseFn = parseTicketRows;
-        else if (gateway === 'VR') parseFn = parseVrBeneficiosRows;
+        else if (gateway === 'VR')     parseFn = parseVrBeneficiosRows;
 
         // Tenta parsear cada sheet — combina tudo
         for (const sheetName of wb.SheetNames) {
@@ -655,16 +684,17 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
       const dataInicio = datas[0]!;
       const dataFim    = datas[datas.length - 1]!;
 
-      const { data } = await api.post<{ success: boolean; loteId: string; adicionadas: number; atualizadas: number }>(
+      const { data } = await api.post<{ success: boolean; loteId: string; adicionadas: number; atualizadas: number; taxasProjetadas?: number }>(
         '/adquirente/lotes',
         { arquivo: file.name, gateway, tipo: 'VENDAS', dataInicio, dataFim, vendas: allVendas },
       );
 
       const result: ImportResult = {
-        arquivo:    file.name,
-        adicionadas: data.adicionadas,
-        atualizadas: data.atualizadas,
-        loteId:     data.loteId,
+        arquivo:         file.name,
+        adicionadas:     data.adicionadas,
+        atualizadas:     data.atualizadas,
+        taxasProjetadas: data.taxasProjetadas,
+        loteId:          data.loteId,
       };
       set({ lastImport: result });
       await Promise.all([get().loadLotes(), get().loadVendas()]);
@@ -697,11 +727,43 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
         const buf = await file.arrayBuffer();
         const wb  = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
 
-        if (gateway === 'SODEXO') {
-          const sheetName = wb.SheetNames.find(n =>
-            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('pagam') ||
-            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('pgto')
-          ) ?? wb.SheetNames[0]!;
+        if (gateway === 'PLUXEE') {
+          const normSheet = (n: string) => n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          const sheetName = wb.SheetNames.find(n => normSheet(n).includes('pagam') || normSheet(n).includes('pgto')) ?? wb.SheetNames[0]!;
+          const ws = wb.Sheets[sheetName];
+          if (!ws) throw new Error('Planilha de pagamentos Pluxee não encontrada');
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+          parsed = parsePluxeePgtosRows(rows as string[][], file.name);
+        } else if (gateway === 'ALELO' || gateway === 'NAIP') {
+          const normSheet = (n: string) => n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          const parseRecebFn = gateway === 'NAIP' ? parseNaipRecebimentosRows : parseAleloRecebimentosRows;
+
+          const sheetReceb = wb.SheetNames.find(n => normSheet(n).includes('receb')) ?? wb.SheetNames[0]!;
+          const wsReceb = wb.Sheets[sheetReceb];
+          if (!wsReceb) throw new Error(`Aba Recebimentos não encontrada no arquivo ${gateway}`);
+          const rowsReceb = XLSX.utils.sheet_to_json<unknown[]>(wsReceb, { header: 1, defval: '' });
+          parsed = parseRecebFn(rowsReceb as string[][], file.name);
+
+          // Aba "Outras Transações" — tarifas TOR e compensações
+          const sheetOutras = wb.SheetNames.find(n => normSheet(n).includes('outr') || normSheet(n).includes('taxa'));
+          if (sheetOutras) {
+            const wsOutras = wb.Sheets[sheetOutras]!;
+            const rowsOutras = XLSX.utils.sheet_to_json<unknown[]>(wsOutras, { header: 1, defval: '' });
+            try {
+              const outrasResult = parseAleloOutrasRows(rowsOutras as string[][], file.name);
+              if (gateway === 'NAIP') {
+                outrasResult.recebiveis = outrasResult.recebiveis.map((r: any) => ({
+                  ...r, gateway: 'NAIP', bandeira: 'NAIP',
+                  idempotencyKey: r.idempotencyKey.replace(/^ALELO::/, 'NAIP::'),
+                }));
+              }
+              parsed.recebiveis.push(...outrasResult.recebiveis);
+              parsed.ignoradas += outrasResult.ignoradas;
+            } catch { /* aba sem dados */ }
+          }
+        } else if (gateway === 'SODEXO') {
+          const normSheet = (n: string) => n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          const sheetName = wb.SheetNames.find(n => normSheet(n).includes('pagam') || normSheet(n).includes('pgto')) ?? wb.SheetNames[0]!;
           const ws = wb.Sheets[sheetName];
           if (!ws) throw new Error('Planilha de pagamentos não encontrada');
           const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
@@ -715,6 +777,15 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
           if (!ws) throw new Error('Planilha de guias de reembolso não encontrada');
           const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
           parsed = parseVrRecebiveisRows(rows as string[][], file.name);
+        } else if (gateway === 'TICKET') {
+          const sheetName = wb.SheetNames.find(n =>
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('reembolso') ||
+            n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('detalh')
+          ) ?? wb.SheetNames[0]!;
+          const ws = wb.Sheets[sheetName];
+          if (!ws) throw new Error('Planilha de reembolso Ticket não encontrada');
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+          parsed = parseTicketRecebiveisRows(rows as string[][], file.name);
         } else {
           const sheetName = wb.SheetNames.find(n =>
             n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes('detalh'),
@@ -745,10 +816,11 @@ export const useAdquirenteStore = create<AdquirenteState>((set, get) => ({
       );
 
       const result: ImportResult = {
-        arquivo:    file.name,
+        arquivo:     file.name,
         adicionadas: data.adicionadas,
         atualizadas: data.atualizadas,
-        loteId:     data.loteId,
+        loteId:      data.loteId,
+        ...(parsed.resumo ? { resumoTaxas: parsed.resumo } : {}),
       };
       set({ lastImport: result });
       await get().loadLotes();

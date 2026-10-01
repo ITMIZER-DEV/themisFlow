@@ -112,17 +112,25 @@ export type {
   RastreioResult,
 } from './adquirente-concilia-engine.js';
 
-// Vouchers / Vales Alimentação e Refeição (Alelo, Sodexo, Ticket, VR)
+// Vouchers / Vales Alimentação e Refeição (Alelo, Sodexo, Pluxee, Ticket, VR, NAIP)
 export {
   parseAleloRows,
+  parseAleloVendasRows,
+  parseAleloRecebimentosRows,
+  parseAleloOutrasRows,
+  parseNaipVendasRows,
+  parseNaipRecebimentosRows,
   parseSodexoRows,
+  parseSodexoRecebiveisRows,
+  parsePluxeeVendasRows,
+  parsePluxeePgtosRows,
   parseTicketRows,
   parseVrBeneficiosRows,
-  parseSodexoRecebiveisRows,
   parseVrRecebiveisRows,
+  parseTicketRecebiveisRows,
   parseVrVendasEdi,
   parseVrReembolsosEdi,
 } from './voucher-parser.js';
-export type { VoucherVenda, VoucherResult } from './voucher-parser.js';
+export type { VoucherVenda, VoucherResult, PluxeeTaxaSumario } from './voucher-parser.js';
 
 

@@ -48,8 +48,12 @@ apps/api/.env
 *.xlsx
 *.csv
 docs/conciliacao/getnet/extratos/
+docs/conciliacao/
 docs/getnet/
 docs/pluxee/
+docs/sodexo-pluxee/
+docs/alelo/
+docs/ticket/
 docs/sitef/
 
 # Exceções: Fixtures mock/fictícias de testes automatizados

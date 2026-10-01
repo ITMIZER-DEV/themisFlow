@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   useAdquirenteStore,
   type AdquirenteLote, type ImportResult,
@@ -6,6 +7,7 @@ import {
   type RastreioTransacao, type DivergenciaItem,
   type ResumoVendas,
 } from '../../stores/adquirenteStore';
+import type { PluxeeTaxaSumario } from '@themisflow/core';
 import { fmtDate, fmtDateTime } from '../../lib/date';
 import { exportTaxasCSV, downloadCSV } from '../../lib/csv';
 import { api } from '../../services/api';
@@ -13,7 +15,7 @@ import * as XLSX from 'xlsx';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-const GATEWAYS = ['GETNET', 'CIELO', 'STONE', 'REDE', 'PAGSEGURO', 'SUMUP', 'ALELO', 'TICKET', 'VR'];
+const GATEWAYS = ['GETNET', 'CIELO', 'STONE', 'REDE', 'PAGSEGURO', 'SUMUP', 'ALELO', 'NAIP', 'PLUXEE', 'TICKET', 'VR'];
 
 function fmtMoeda(v: string | number) {
   const n = typeof v === 'string' ? parseFloat(v) : v;
@@ -61,6 +63,10 @@ interface VendaPagamentoRecebivel {
   parcelasInfo:   string | null;
   valorLiquido:   number;
   valorLiquidado: number;
+  valorBruto?:    number;
+  descontos?:     number;
+  nsu?:           string | null;
+  autorizacao?:   string | null;
 }
 
 interface VendaPagamento {
@@ -84,14 +90,15 @@ interface VendaPagamento {
   statusPagamento: string;
   somaLiquidado:   number;
   somaLiquido:     number;
+  isGuiaLote?:     boolean;
   recebiveis:      VendaPagamentoRecebivel[];
 }
 
 const STATUS_PGTO_MAP: Record<string, { label: string; cls: string; desc: (d: VendaPagamento) => string }> = {
-  PAGO:          { label: 'PAGO',          cls: 'tab-badge tab-badge-teal', desc: d => `Totalmente liquidado pela adquirente — ${fmtMoeda(d.somaLiquidado)}` },
+  PAGO:          { label: 'PAGO',          cls: 'tab-badge tab-badge-teal', desc: d => d.isGuiaLote ? `Liquidado via Guia de Reembolso VR — ${fmtMoeda(d.somaLiquidado)}` : `Totalmente liquidado pela adquirente — ${fmtMoeda(d.somaLiquidado)}` },
   PARCIAL:       { label: 'PARCIAL',       cls: 'tab-badge tab-badge-warn', desc: d => `${fmtMoeda(d.somaLiquidado)} de ${fmtMoeda(d.somaLiquido)} liquidados` },
-  AGUARDANDO:    { label: 'AGUARDANDO',    cls: 'tab-badge',               desc: _ => 'Transação aprovada — aguardando liquidação pela adquirente' },
-  VENCIDO:       { label: 'VENCIDO',       cls: 'tab-badge',               desc: _ => 'Prazo de pagamento vencido sem liquidação registrada' },
+  AGUARDANDO:    { label: 'AGUARDANDO',    cls: 'tab-badge',               desc: d => d.isGuiaLote ? 'Venda agrupada na Guia de Reembolso VR — aguardando liquidação' : 'Transação aprovada — aguardando liquidação pela adquirente' },
+  VENCIDO:       { label: 'VENCIDO',       cls: 'tab-badge tab-badge-warn', desc: _ => 'Prazo de pagamento vencido sem liquidação registrada' },
   SEM_RECEBIVEL: { label: 'SEM RECEBÍVEL', cls: 'tab-badge',               desc: _ => 'Nenhum recebível importado para esta venda' },
   CANCELADA:     { label: 'CANCELADA',     cls: 'tab-badge',               desc: _ => 'Transação cancelada — sem liquidação' },
   CHARGEBACK:    { label: 'CHARGEBACK',    cls: 'tab-badge tab-badge-warn', desc: _ => 'Chargeback registrado — valor em disputa' },
@@ -125,26 +132,68 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-4)' }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        background: 'rgba(5, 10, 20, 0.75)',
+        backdropFilter: 'blur(5px)',
+        WebkitBackdropFilter: 'blur(5px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--sp-4)',
+      }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{
+          background: 'var(--panel)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)',
+          width: '100%',
+          maxWidth: 640,
+          maxHeight: '90vh',
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          color: 'var(--text)',
+        }}
+      >
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Situação de Pagamento</div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>Situação de Pagamento</div>
             {data && (
-              <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
                 NSU {data.venda.nsu} · {data.venda.gateway} · {data.venda.bandeira} {data.venda.modalidade}
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '1.1rem', padding: 4, lineHeight: 1 }}>✕</button>
+          <button
+            onClick={onClose}
+            aria-label="Fechar"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              padding: 4,
+              lineHeight: 1,
+              transition: 'color var(--transition)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
+          >
+            ✕
+          </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: 'var(--sp-4) var(--sp-5)', flex: 1 }}>
+        <div style={{ padding: 'var(--sp-4) var(--sp-5)', flex: 1, background: 'var(--panel)' }}>
           {loading && <div style={{ color: 'var(--muted)', fontSize: '0.8rem', textAlign: 'center', padding: 'var(--sp-8)' }}>Carregando...</div>}
           {error   && <div className="alert alert-error" style={{ marginTop: 8 }}>{error}</div>}
 
@@ -153,15 +202,15 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
             return (
               <>
                 {/* Status principal */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 'var(--sp-4)', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 'var(--sp-4)', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--panel-alt)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
                   {statusPgtoBadge(data.statusPagamento, '0.78rem')}
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)' }}>{meta.desc(data)}</span>
                 </div>
 
                 {/* Identificação */}
                 <div style={{ marginBottom: 'var(--sp-4)' }}>
-                  <div style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Identificação da Venda</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.74rem' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Identificação da Venda</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.75rem', background: 'var(--panel-alt)', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
                     {[
                       ['Data/Hora', fmtDateTime(data.venda.dataHoraVenda)],
                       ['NSU',        data.venda.nsu || '—'],
@@ -172,7 +221,7 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
                     ].map(([label, value]) => (
                       <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                         <span style={{ color: 'var(--muted)', minWidth: 82, flexShrink: 0 }}>{label}</span>
-                        <span style={{ fontFamily: 'var(--font-mono)' }}>{value}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{value}</span>
                       </div>
                     ))}
                   </div>
@@ -184,20 +233,49 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
                       { label: 'TAXA',    v: data.venda.valorTaxa,    color: 'var(--red)'  },
                       { label: 'LÍQUIDO', v: data.venda.valorLiquido, color: 'var(--teal)' },
                     ].map(({ label, v, color }) => (
-                      <div key={label} style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 'var(--sp-2) var(--sp-3)' }}>
-                        <div style={{ fontSize: '0.58rem', color: 'var(--muted)', marginBottom: 2 }}>{label}</div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color }}>{fmtMoeda(v)}</div>
+                      <div key={label} style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 'var(--sp-2) var(--sp-3)' }}>
+                        <div style={{ fontSize: '0.62rem', color: 'var(--muted)', marginBottom: 2, fontWeight: 600 }}>{label}</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.95rem', color }}>{fmtMoeda(v)}</div>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {/* Banner de Guia de Reembolso VR (quando liquidado em lote) */}
+                {data.isGuiaLote && data.recebiveis[0] && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 'var(--sp-4)', padding: 'var(--sp-3) var(--sp-4)', background: 'rgba(0, 201, 177, 0.08)', borderRadius: 'var(--radius)', border: '1px solid rgba(0, 201, 177, 0.25)' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+                    </svg>
+                    <div style={{ fontSize: '0.75rem', lineHeight: '1.4', flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--teal)' }}>Liquidação Consolidada via Guia de Reembolso VR</div>
+                      <div style={{ color: 'var(--text-soft)', marginTop: 2 }}>
+                        No modelo de vouchers/benefícios, as vendas individuais são consolidadas pela VR em guias de corte. A taxa MDR e o repasse são apurados no lote.
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8, background: 'var(--panel)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                        <div>
+                          <span style={{ fontSize: '0.62rem', color: 'var(--muted)', display: 'block' }}>GUIA VR</span>
+                          <strong style={{ fontFamily: 'var(--font-mono)' }}>{data.recebiveis[0].autorizacao || data.recebiveis[0].nsu || '—'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.62rem', color: 'var(--muted)', display: 'block' }}>DATA CORTE</span>
+                          <strong style={{ fontFamily: 'var(--font-mono)' }}>{fmtDate(data.recebiveis[0].dataVenda)}</strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.62rem', color: 'var(--muted)', display: 'block' }}>LÍQUIDO DO LOTE</span>
+                          <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>{fmtMoeda(data.recebiveis[0].valorLiquido)}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Agenda de Recebimento */}
                 {data.recebiveis.length > 0 ? (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <span style={{ fontSize: '0.62rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Agenda de Recebimento — {data.recebiveis.length} parcela{data.recebiveis.length !== 1 ? 's' : ''}
+                        Agenda de Recebimento — {data.isGuiaLote ? 'Guia de Reembolso' : `${data.recebiveis.length} parcela${data.recebiveis.length !== 1 ? 's' : ''}`}
                       </span>
                       {data.venda.dataPrimeiroPgto && (
                         <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>
@@ -209,7 +287,7 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
                       <table className="trn-table" style={{ margin: 0 }}>
                         <thead>
                           <tr>
-                            <th>Parcela</th>
+                            <th>{data.isGuiaLote ? 'Referência' : 'Parcela'}</th>
                             <th>Vencimento</th>
                             <th className="right">Prev. Líquido</th>
                             <th className="right">Liquidado</th>
@@ -226,7 +304,7 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
                             return (
                               <tr key={r.idempotencyKey} style={{ opacity: isPast && !isPago ? 0.7 : 1, background: rowColor }}>
                                 <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--muted)' }}>
-                                  {r.parcelasInfo ?? `${idx + 1}/${data.recebiveis.length}`}
+                                  {r.parcelasInfo ?? (data.isGuiaLote ? `Guia ${r.autorizacao || r.nsu || '—'}` : `${idx + 1}/${data.recebiveis.length}`)}
                                 </td>
                                 <td className="date-cell" style={{ fontSize: '0.7rem' }}>{fmtDate(r.dataVencimento)}</td>
                                 <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--text-soft)' }}>{fmtMoeda(r.valorLiquido)}</td>
@@ -254,8 +332,8 @@ function VendaPagamentoModal({ vendaKey, onClose }: { vendaKey: string; onClose:
                     </div>
                   </div>
                 ) : (
-                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
-                    Nenhum recebível vinculado. Importe o arquivo <strong>Recebivel_Completos</strong> para ver a agenda de pagamento.
+                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', background: 'var(--panel-alt)', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+                    Nenhum recebível vinculado. Importe o arquivo <strong style={{ color: 'var(--text)' }}>Recebivel_Completos</strong> para ver a agenda de pagamento.
                   </div>
                 )}
               </>
@@ -339,29 +417,60 @@ function Dropzone({ label, sub, loading, onFile, accent = 'teal', accept = '.xls
 
 // ── Resultado de importação ───────────────────────────────────────
 
+function PluxeeResumoBlock({ r }: { r: PluxeeTaxaSumario }) {
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return (
+    <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--panel-2, var(--panel))', borderRadius: 'var(--radius-sm)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)' }}>
+      <div style={{ fontWeight: 700, color: 'var(--text-soft)', marginBottom: 4 }}>RESUMO PLUXEE — Taxas & Cobranças</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, auto)', gap: '2px 20px' }}>
+        <span style={{ color: 'var(--muted)' }}>Total Bruto</span>
+        <span style={{ color: 'var(--text)' }}>{fmt(r.totalBruto)}</span>
+        <span style={{ color: 'var(--muted)' }}>Total Taxas</span>
+        <span style={{ color: 'var(--gold)' }}>- {fmt(r.totalTaxas)}</span>
+        <span style={{ color: 'var(--muted)' }}>Taxa Admin PAT</span>
+        <span style={{ color: 'var(--text-soft)' }}>{fmt(r.taxaAdminPat)}</span>
+        <span style={{ color: 'var(--muted)' }}>Taxa Admin Auxílio</span>
+        <span style={{ color: 'var(--text-soft)' }}>{fmt(r.taxaAdminAuxilio)}</span>
+        <span style={{ color: 'var(--muted)' }}>Gestão Auxílio</span>
+        <span style={{ color: 'var(--text-soft)' }}>{fmt(r.gestaoAuxilio)}</span>
+        <span style={{ color: 'var(--muted)' }}>Total Líquido</span>
+        <span style={{ color: 'var(--teal)', fontWeight: 700 }}>{fmt(r.totalLiquido)}</span>
+      </div>
+    </div>
+  );
+}
+
 function ImportResultBanner({ result, onConciliar, conciliando }: {
   result: ImportResult;
   onConciliar: () => void;
   conciliando: boolean;
 }) {
   return (
-    <div className="alert alert-info" style={{ marginTop: 10, gap: 10 }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/>
-      </svg>
-      <div style={{ flex: 1 }}>
-        <strong>{result.arquivo}</strong> —{' '}
-        <span style={{ color: 'var(--teal)' }}>{result.adicionadas} novas</span>
-        {result.atualizadas > 0 && <span style={{ color: 'var(--gold)' }}>, {result.atualizadas} atualizadas</span>}
+    <div className="alert alert-info" style={{ marginTop: 10, gap: 10, flexDirection: 'column', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'flex-start' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: 2, flexShrink: 0 }}>
+          <circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/>
+        </svg>
+        <div style={{ flex: 1 }}>
+          <strong>{result.arquivo}</strong> —{' '}
+          <span style={{ color: 'var(--teal)' }}>{result.adicionadas} novas</span>
+          {result.atualizadas > 0 && <span style={{ color: 'var(--gold)' }}>, {result.atualizadas} atualizadas</span>}
+          {result.taxasProjetadas != null && result.taxasProjetadas > 0 && (
+            <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--teal)', marginTop: 2 }}>
+              ✓ {result.taxasProjetadas} transações com taxas MDR e liquidação projetadas automaticamente pelo contrato de taxas.
+            </span>
+          )}
+        </div>
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: '0.72rem', padding: '4px 12px', whiteSpace: 'nowrap', flexShrink: 0 }}
+          disabled={conciliando}
+          onClick={onConciliar}
+        >
+          {conciliando ? 'Conciliando...' : '↔ Conciliar com SITEF'}
+        </button>
       </div>
-      <button
-        className="btn btn-primary"
-        style={{ fontSize: '0.72rem', padding: '4px 12px', whiteSpace: 'nowrap' }}
-        disabled={conciliando}
-        onClick={onConciliar}
-      >
-        {conciliando ? 'Conciliando...' : '↔ Conciliar com SITEF'}
-      </button>
+      {result.resumoTaxas && <PluxeeResumoBlock r={result.resumoTaxas} />}
     </div>
   );
 }
@@ -444,7 +553,12 @@ function TabImportar() {
           </div>
           <Dropzone
             label={`Importar Vendas (${displayGateway})`}
-            sub={gateway === 'VR' ? 'Extrato de Vendas VR — .xlsx, .xls ou .txt (EDI 200 posições)' : 'Arquivo Vendas_Detalhado_*.xlsx — sheets CARTÕES e VOUCHER'}
+            sub={
+              gateway === 'VR'     ? 'Extrato de Vendas VR — .xlsx, .xls ou .txt (EDI 200 posições)' :
+              gateway === 'PLUXEE' ? 'extrato_vendas_*.xlsx — aba extrato_vendas' :
+              (gateway === 'ALELO' || gateway === 'NAIP') ? `Vendas_${gateway}_*.xlsx — aba Extrato` :
+              'Arquivo Vendas_Detalhado_*.xlsx — sheets CARTÕES e VOUCHER'
+            }
             loading={importingV}
             onFile={handleVendas}
             accent="teal"
@@ -457,7 +571,13 @@ function TabImportar() {
           </div>
           <Dropzone
             label={`Importar Recebíveis (${displayGateway})`}
-            sub={gateway === 'VR' ? 'Guias de Reembolso VR — .xlsx, .xls ou .txt (EDI 200 posições)' : gateway === 'SODEXO' ? 'Extrato de pagamentos Sodexo — .xlsx' : 'Arquivo Recebivel_Completos_*.xlsx — sheet Detalhado'}
+            sub={
+              gateway === 'VR'     ? 'Guias de Reembolso VR — .xlsx, .xls ou .txt (EDI 200 posições)' :
+              gateway === 'PLUXEE' ? 'extrato_pgtos_*.xlsx — taxas e pagamentos com resumo' :
+              (gateway === 'ALELO' || gateway === 'NAIP') ? `Recebimentos_${gateway}_*.xlsx — abas Recebimentos + Outras Transações` :
+              gateway === 'SODEXO' ? 'Extrato de pagamentos Sodexo — .xlsx' :
+              'Arquivo Recebivel_Completos_*.xlsx — sheet Detalhado'
+            }
             loading={importingR}
             onFile={handleRecebiveis}
             accent="gold"
@@ -1252,6 +1372,104 @@ function TabIndicadores() {
               </table>
             </div>
           </div>
+
+          {/* Auditoria de Guias de Reembolso / Recebíveis */}
+          {kpi.auditoriaGuias && kpi.auditoriaGuias.length > 0 && (
+            <div style={{ marginTop: 'var(--sp-6)', marginBottom: 'var(--sp-5)' }}>
+              <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>
+                <span className="section-title">Auditoria de Guias de Reembolso / Liquidações (Taxas Reais Cobradas)</span>
+                <span className="tab-badge tab-badge-teal" style={{ fontSize: '0.62rem' }}>Fato Gerador / VR & Vouchers</span>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-soft)', marginBottom: 'var(--sp-3)' }}>
+                Taxas efetivamente descontadas nas Guias de Reembolso emitidas pela adquirente/VR. Mostra exatamente o desconto aplicado pelo provedor na data do pagamento e aponta cobranças indevidas.
+              </div>
+              <div className="transactions-section">
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="trn-table">
+                    <thead>
+                      <tr>
+                        <th>Bandeira</th>
+                        <th>Modalidade</th>
+                        <th>Produto / Lançamento</th>
+                        <th className="right">Guias</th>
+                        <th className="right">Volume Bruto</th>
+                        <th className="right">Taxas Retidas</th>
+                        <th className="right">Taxa Efetiva</th>
+                        {kpiParams.contratoId && <>
+                          <th className="right">Contratada</th>
+                          <th className="right">Div. R$</th>
+                          <th className="right">Div. %</th>
+                        </>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kpi.auditoriaGuias.map((row, idx) => {
+                        const temDivergencia = row.divergenciaReais != null && Math.abs(row.divergenciaReais) > 0.01;
+                        const divColor = row.divergenciaReais != null
+                          ? (row.divergenciaReais > 0.01 ? 'var(--red)' : row.divergenciaReais < -0.01 ? 'var(--teal)' : 'var(--muted)')
+                          : 'var(--muted)';
+                        return (
+                          <tr key={`guia-${row.bandeira}-${row.modalidade}-${row.lancamento || idx}`} style={temDivergencia ? { background: 'var(--red-bg)' } : {}}>
+                            <td style={{ fontWeight: 600 }}>{row.bandeira}</td>
+                            <td style={{ fontSize: '0.72rem', color: 'var(--text-soft)' }}>{row.modalidade}</td>
+                            <td style={{ fontSize: '0.72rem', color: 'var(--text)', fontWeight: 500 }}>{row.lancamento || '—'}</td>
+                            <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--muted)' }}>{row.qtdGuias.toLocaleString('pt-BR')}</td>
+                            <td className="mono-cell" style={{ textAlign: 'right' }}>{fmtMoeda(row.totalBruto)}</td>
+                            <td className="mono-cell deb-cell">{fmtMoeda(row.totalTaxa)}</td>
+                            <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--gold)' }}>
+                              {fmtPct(row.taxaEfetivaPct)}
+                            </td>
+                            {kpiParams.contratoId && <>
+                              <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--muted)' }}>
+                                {fmtPct(row.taxaMdrContratada)}
+                              </td>
+                              <td className="mono-cell" style={{ textAlign: 'right', color: divColor }}>
+                                {row.divergenciaReais != null ? fmtMoeda(row.divergenciaReais) : '—'}
+                              </td>
+                              <td className="mono-cell" style={{ textAlign: 'right', color: divColor }}>
+                                {fmtPct(row.divergenciaPct)}
+                              </td>
+                            </>}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Tarifas operacionais / encargos contratados */}
+              {kpi.encargosContratados && kpi.encargosContratados.length > 0 && (
+                <div style={{
+                  marginTop: 'var(--sp-3)',
+                  padding: 'var(--sp-3) var(--sp-4)',
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text)' }}>
+                    Tarifas Operacionais Contratadas (Débitos por Ocorrência):
+                  </span>
+                  {kpi.encargosContratados.map((enc, idx) => (
+                    <span key={idx} style={{
+                      fontSize: '0.72rem',
+                      background: 'rgba(240,165,0,0.1)',
+                      color: 'var(--gold)',
+                      border: '1px solid rgba(240,165,0,0.3)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '3px 10px',
+                    }}>
+                      {enc.descricao}: <strong>{fmtMoeda(enc.valor)}</strong> ({enc.tipo === 'POR_OCORRENCIA' ? 'por remessa/evento' : enc.tipo})
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Status de conciliação */}
           {kpi.statusConcVendas.length > 0 && (
@@ -2671,15 +2889,19 @@ function TabPagamentos() {
 // ── Tab: Cruzamento ERP ───────────────────────────────────────────
 
 interface CruzamentoKpis {
-  totalAdquirente:   number;
-  totalErp:          number;
-  matches:           number;
-  divergentes:       number;
-  soAdquirente:      number;
-  soErp:             number;
-  valorSoAdquirente: number;
-  valorSoErp:        number;
-  taxaMatch:         number;
+  totalAdquirente:      number;
+  totalErp:             number;
+  matches:              number;
+  divergentes:          number;
+  soAdquirente:         number;
+  soErp:                number;
+  pixDiretoBanco:       number;
+  valorSoAdquirente:    number;
+  valorSoErp:           number;
+  valorPixDireto:       number;
+  taxaMatch:            number;
+  pixQrCodeSitefDireto: boolean;
+  pixQrCodeBancoDesc:   string | null;
 }
 
 interface CruzamentoDia {
@@ -2733,14 +2955,27 @@ interface CruzamentoSoErp {
   hora:         string;
 }
 
+interface CruzamentoPixDireto {
+  id:          string;
+  nsu:         string | null;
+  autorizacao: string | null;
+  pdv:         string | null;
+  nomecartao:  string | null;
+  valorErp:    number;
+  data:        string;
+  hora:        string;
+  bancoDesc:   string | null;
+}
+
 interface CruzamentoResult {
-  periodo:      { dataInicio?: string; dataFim?: string };
-  kpis:         CruzamentoKpis;
-  resumoPorDia: CruzamentoDia[];
-  matches:      CruzamentoMatch[];
-  divergentes:  CruzamentoMatch[];
-  soAdquirente: CruzamentoSoAdq[];
-  soErp:        CruzamentoSoErp[];
+  periodo:        { dataInicio?: string; dataFim?: string };
+  kpis:           CruzamentoKpis;
+  resumoPorDia:   CruzamentoDia[];
+  matches:        CruzamentoMatch[];
+  divergentes:    CruzamentoMatch[];
+  soAdquirente:   CruzamentoSoAdq[];
+  soErp:          CruzamentoSoErp[];
+  pixDiretoBanco: CruzamentoPixDireto[];
 }
 
 const MATCH_VIA_BADGE: Record<string, string> = {
@@ -2756,7 +2991,7 @@ function TabCruzamentoERP() {
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [result,     setResult]     = useState<CruzamentoResult | null>(null);
-  const [secao,      setSecao]      = useState<'resumo' | 'divergentes' | 'soAdq' | 'soErp'>('resumo');
+  const [secao,      setSecao]      = useState<'resumo' | 'divergentes' | 'soAdq' | 'soErp' | 'pixDireto'>('resumo');
 
   const selStyle: React.CSSProperties = {
     background: 'var(--panel)', border: '1px solid var(--border)',
@@ -2884,6 +3119,9 @@ function TabCruzamentoERP() {
               { key: 'divergentes',label: `Divergências de Valor (${result.divergentes.length})` },
               { key: 'soAdq',      label: `Só Adquirente (${result.soAdquirente.length})` },
               { key: 'soErp',      label: `Só ERP (${result.soErp.length})` },
+              ...(result.pixDiretoBanco?.length > 0 || result.kpis.pixQrCodeSitefDireto
+                ? [{ key: 'pixDireto' as const, label: `PIX Direto ao Banco (${result.pixDiretoBanco?.length ?? 0})` }]
+                : []),
             ] as const).map(({ key, label }) => (
               <button
                 key={key}
@@ -3132,6 +3370,71 @@ function TabCruzamentoERP() {
               </div>
             )
           )}
+
+          {/* ── PIX Direto ao Banco (via SITEF) ── */}
+          {secao === 'pixDireto' && (
+            (result.pixDiretoBanco?.length ?? 0) === 0 ? (
+              <div className="empty-state" style={{ padding: 'var(--sp-8)' }}>
+                <div className="empty-state-title" style={{ color: 'var(--teal)' }}>Nenhuma transação PIX QR Code identificada neste período</div>
+              </div>
+            ) : (
+              <div className="transactions-section">
+                <div style={{
+                  marginBottom: 12, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(0,201,177,0.06)', border: '1px solid rgba(0,201,177,0.2)',
+                  fontSize: '0.75rem', color: 'var(--text-soft)',
+                }}>
+                  Transações PIX QR Code registradas no ERP (pdv.vendatef) com liquidação <strong>direta no banco</strong> —
+                  não passam pelo adquirente. Conciliar contra o extrato bancário (OFX).
+                  {result.kpis.pixQrCodeBancoDesc && (
+                    <span style={{ marginLeft: 8, color: 'var(--teal)', fontWeight: 600 }}>
+                      Conta: {result.kpis.pixQrCodeBancoDesc}
+                    </span>
+                  )}
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="trn-table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Hora</th>
+                        <th>NSU</th>
+                        <th>Autorização</th>
+                        <th>PDV</th>
+                        <th>Tipo</th>
+                        <th className="right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.pixDiretoBanco.map(r => (
+                        <tr key={r.id}>
+                          <td className="date-cell" style={{ fontSize: '0.7rem' }}>{new Date(r.data + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.hora || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem' }}>{r.nsu || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.autorizacao || '—'}</td>
+                          <td className="mono-cell" style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{r.pdv || '—'}</td>
+                          <td><span className="tab-badge tab-badge-teal" style={{ fontSize: '0.62rem' }}>PIX QR Code</span></td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--teal)', fontWeight: 700 }}>{fmtMoeda(r.valorErp)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {result.pixDiretoBanco.length > 1 && (
+                      <tfoot>
+                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                          <td colSpan={6} style={{ color: 'var(--text-soft)', fontSize: '0.72rem', padding: '6px 8px' }}>
+                            TOTAL PIX — {result.pixDiretoBanco.length} transações
+                          </td>
+                          <td className="mono-cell" style={{ textAlign: 'right', color: 'var(--teal)' }}>
+                            {fmtMoeda(result.pixDiretoBanco.reduce((a, r) => a + r.valorErp, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            )
+          )}
         </>
       )}
 
@@ -3154,8 +3457,18 @@ import { GetnetSandboxPage } from './GetnetSandboxPage';
 
 type Tab = 'importar' | 'vendas' | 'previsao' | 'pagamentos' | 'rastreio' | 'cruzamento' | 'indicadores' | 'taxas' | 'sandbox';
 
+const VALID_TABS: Tab[] = ['importar', 'vendas', 'previsao', 'pagamentos', 'rastreio', 'cruzamento', 'indicadores', 'taxas', 'sandbox'];
+
 export function AdquirentePage() {
-  const [tab, setTab] = useState<Tab>('importar');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as Tab | null;
+  const initialTab: Tab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'importar';
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  const handleSetTab = (t: Tab) => {
+    setTab(t);
+    setSearchParams(t !== 'importar' ? { tab: t } : {}, { replace: true });
+  };
 
   const loadLotes      = useAdquirenteStore(s => s.loadLotes);
   const loadVendas     = useAdquirenteStore(s => s.loadVendas);
@@ -3188,26 +3501,26 @@ export function AdquirentePage() {
         <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '1rem', color: 'var(--text-soft)' }}>
           Conciliação de Adquirentes
         </h2>
-        <span className="tab-badge tab-badge-teal" style={{ fontSize: '0.65rem' }}>Getnet · Cielo · Stone · Rede</span>
+        <span className="tab-badge tab-badge-teal" style={{ fontSize: '0.65rem' }}>Getnet · Cielo · Stone · Rede · Alelo · NAIP · Pluxee · Ticket · VR</span>
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 'var(--sp-5)' }}>
-        <button style={tabStyle(tab === 'importar')}    onClick={() => setTab('importar')}>Importar</button>
-        <button style={tabStyle(tab === 'vendas')}      onClick={() => setTab('vendas')}>Vendas</button>
-        <button style={tabStyle(tab === 'previsao')}    onClick={() => setTab('previsao')}>Previsão</button>
-        <button style={tabStyle(tab === 'pagamentos')}  onClick={() => setTab('pagamentos')}>Pagamentos (Realizado)</button>
-        <button style={tabStyle(tab === 'rastreio')}    onClick={() => setTab('rastreio')}>Rastreio</button>
-        <button style={tabStyle(tab === 'cruzamento')}  onClick={() => setTab('cruzamento')}>Cruzamento ERP</button>
-        <button style={tabStyle(tab === 'indicadores')} onClick={() => setTab('indicadores')}>Indicadores</button>
-        <button style={tabStyle(tab === 'taxas')}      onClick={() => setTab('taxas')}>Rel. Taxas</button>
+        <button style={tabStyle(tab === 'importar')}    onClick={() => handleSetTab('importar')}>Importar</button>
+        <button style={tabStyle(tab === 'vendas')}      onClick={() => handleSetTab('vendas')}>Vendas</button>
+        <button style={tabStyle(tab === 'previsao')}    onClick={() => handleSetTab('previsao')}>Previsão</button>
+        <button style={tabStyle(tab === 'pagamentos')}  onClick={() => handleSetTab('pagamentos')}>Pagamentos (Realizado)</button>
+        <button style={tabStyle(tab === 'rastreio')}    onClick={() => handleSetTab('rastreio')}>Rastreio</button>
+        <button style={tabStyle(tab === 'cruzamento')}  onClick={() => handleSetTab('cruzamento')}>Cruzamento ERP</button>
+        <button style={tabStyle(tab === 'indicadores')} onClick={() => handleSetTab('indicadores')}>Indicadores</button>
+        <button style={tabStyle(tab === 'taxas')}      onClick={() => handleSetTab('taxas')}>Rel. Taxas</button>
         <button
           style={{
             ...tabStyle(tab === 'sandbox'),
             color: tab === 'sandbox' ? 'var(--teal)' : 'var(--gold)',
             fontWeight: 700,
           }}
-          onClick={() => setTab('sandbox')}
+          onClick={() => handleSetTab('sandbox')}
         >
           ⚡ Sandbox EDI Getnet
         </button>

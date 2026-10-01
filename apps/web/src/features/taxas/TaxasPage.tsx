@@ -8,6 +8,7 @@ import { fmtDate } from '../../lib/date';
 
 const REDES_SUGERIDAS = [
   'CIELO', 'REDE', 'GETNET', 'STONE', 'PAGSEGURO', 'SUMUP', 'SAFRAPAY', 'ADYEN', 'BANCOOB',
+  'VR', 'ALELO', 'PLUXEE', 'SODEXO', 'TICKET',
 ];
 
 // ── Modal de novo contrato ─────────────────────────────────────────

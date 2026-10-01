@@ -182,6 +182,84 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
     let atualizadas = 0;
 
     if (tipo === 'VENDAS' && vendas) {
+      // Se houver vendas com taxa zerada (como VR Benefícios ou outros vouchers que só fornecem valor bruto),
+      // busca contratos ativos de taxas para projetar a taxa MDR e previsão de pagamento
+      const temTaxaZerada = vendas.some(v => v.valorTaxa === 0 || Math.abs(v.valorTaxa) < 0.001);
+      if (temTaxaZerada) {
+        const contratos = await fastify.prisma.taxaContrato.findMany({
+          where: {
+            ativo: true,
+            rede: { in: [gateway.toUpperCase(), 'VR', 'TODOS'] },
+          },
+          include: { itens: true },
+          orderBy: { criadoEm: 'desc' },
+        });
+
+        const itensContrato = contratos.flatMap(c => c.itens);
+
+        if (itensContrato.length > 0) {
+          for (const v of vendas) {
+            if (v.valorTaxa === 0 || Math.abs(v.valorTaxa) < 0.001) {
+              const band = (v.bandeira || '').toUpperCase();
+              const bandBruta = (v.bandeiraBruta || '').toUpperCase();
+              const mod = (v.modalidade || '').toUpperCase();
+              const numParc = v.parcelas || 1;
+              const formaPag = (v.formaPagamento || '').toUpperCase();
+
+              const match = itensContrato.find(it => {
+                const itBand = it.bandeira.toUpperCase();
+                const itTipo = it.tipoPagamento.toUpperCase();
+
+                const isAux = bandBruta.includes('AUXILIO') || band.includes('AUXILIO') || formaPag.includes('AUXILIO');
+                const isPat = bandBruta.includes('PAT') || band.includes('PAT') || formaPag.includes('PAT');
+
+                if (isAux && (itBand.includes('AUXILIO') || itTipo.includes('AUXILIO'))) return true;
+                if (isPat && (itBand.includes('PAT') || itTipo.includes('PAT'))) return true;
+
+                const matchBand = (
+                  itBand === band ||
+                  itBand === 'OUTROS' ||
+                  (itBand === 'VR' && (band.includes('VR') || bandBruta.includes('VR') || gateway.toUpperCase() === 'VR')) ||
+                  (itBand === 'PLUXEE' && (band.includes('PLUXEE') || bandBruta.includes('PLUXEE') || gateway.toUpperCase() === 'PLUXEE' || gateway.toUpperCase() === 'SODEXO')) ||
+                  (itBand === 'ALELO' && (band.includes('ALELO') || bandBruta.includes('ALELO') || gateway.toUpperCase() === 'ALELO')) ||
+                  bandBruta.includes(itBand) ||
+                  itTipo.includes(band)
+                );
+                if (!matchBand) return false;
+
+                const itMod = it.modalidade.toUpperCase();
+                const matchMod = (
+                  itMod === mod ||
+                  (mod === 'VOUCHER' && (itMod === 'A_VISTA' || itTipo === 'VOUCHER' || itTipo === 'ALIMENTACAO' || itTipo === 'REFEICAO')) ||
+                  (mod === 'DEBITO' && (itMod === 'A_VISTA' || itTipo === 'DEBITO')) ||
+                  (mod === 'CREDITO' && numParc === 1 && itMod === 'A_VISTA') ||
+                  (mod === 'CREDITO' && numParc > 1 && itMod.includes('PARCELADO'))
+                );
+                if (!matchMod) return false;
+
+                if (it.parcelaMin != null && numParc < it.parcelaMin) return false;
+                if (it.parcelaMax != null && numParc > it.parcelaMax) return false;
+
+                return true;
+              });
+
+              if (match) {
+                const mdr = Number(match.taxaMdr);
+                const taxaCalc = -Math.round((v.valorBruto * (mdr / 100)) * 100) / 100;
+                v.valorTaxa = taxaCalc;
+                v.valorLiquido = Math.round((v.valorBruto + taxaCalc) * 100) / 100;
+
+                if (!v.dataPrimeiroPgto && match.prazoRecebimento > 0) {
+                  const d = new Date(v.dataHoraVenda);
+                  d.setDate(d.getDate() + match.prazoRecebimento);
+                  v.dataPrimeiroPgto = d.toISOString().slice(0, 10);
+                }
+              }
+            }
+          }
+        }
+      }
+
       const keys = vendas.map(v => v.idempotencyKey);
       const existing = await fastify.prisma.adquirenteVenda.findMany({
         where: { idempotencyKey: { in: keys } },
@@ -751,31 +829,97 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: { _sum: { valorLiquido: 'desc' } },
     });
 
-    // 5. Opcional: cross com taxas contratadas (se contratoId fornecido)
+    // 5. Cross com taxas contratadas (se contratoId fornecido ou auto-detectado por gateway)
     let taxasContratadas: Array<{
       tipoPagamento: string; bandeira: string; modalidade: string;
       taxaMdr: unknown; prazoRecebimento: number;
     }> | null = null;
 
-    if (contratoId) {
+    let resolvedContratoId = contratoId;
+    if (!resolvedContratoId && gateway) {
+      const gUpper = gateway.toUpperCase();
+      const redes = gUpper === 'SODEXO' ? ['SODEXO', 'PLUXEE'] : gUpper === 'PLUXEE' ? ['PLUXEE', 'SODEXO'] : [gUpper];
+      const autoContrato = await fastify.prisma.taxaContrato.findFirst({
+        where: { rede: { in: redes }, ativo: true },
+        select: { id: true },
+        orderBy: { criadoEm: 'desc' },
+      });
+      if (autoContrato) {
+        resolvedContratoId = autoContrato.id;
+      }
+    }
+
+    if (resolvedContratoId) {
       taxasContratadas = await fastify.prisma.taxaItem.findMany({
-        where:  { contratoId },
+        where:  { contratoId: resolvedContratoId },
         select: { tipoPagamento: true, bandeira: true, modalidade: true,
                   taxaMdr: true, prazoRecebimento: true },
       });
     }
 
-    // Monta resposta com taxa efetiva por bandeira/modalidade
+    // Helper para matching flexível de taxas contratadas
+    const matchContratada = (bandeira: string, modalidade: string, lancamento?: string) => {
+      if (!taxasContratadas || taxasContratadas.length === 0) return null;
+      const bUpper = (bandeira || '').toUpperCase();
+      const mUpper = (modalidade || '').toUpperCase();
+      const lUpper = (lancamento || '').toUpperCase();
+
+      // 1. Match específico de PAT vs Auxílio para vouchers (Pluxee / Alelo)
+      const isAux = lUpper.includes('AUXILIO') || bUpper.includes('AUXILIO');
+      const isPat = lUpper.includes('PAT') || bUpper.includes('PAT');
+
+      if (isAux) {
+        const matchAux = taxasContratadas.find(tc => {
+          const itBand = tc.bandeira.toUpperCase();
+          const itTipo = tc.tipoPagamento.toUpperCase();
+          return itBand.includes('AUXILIO') || itTipo.includes('AUXILIO');
+        });
+        if (matchAux) return matchAux;
+      }
+
+      if (isPat) {
+        const matchPat = taxasContratadas.find(tc => {
+          const itBand = tc.bandeira.toUpperCase();
+          const itTipo = tc.tipoPagamento.toUpperCase();
+          return itBand.includes('PAT') || itTipo.includes('PAT');
+        });
+        if (matchPat) return matchPat;
+      }
+
+      // 2. Match geral por bandeira/modalidade
+      return taxasContratadas.find(tc => {
+        const itBand = tc.bandeira.toUpperCase();
+        const itTipo = tc.tipoPagamento.toUpperCase();
+        const bandMatch = (
+          itBand === bUpper ||
+          itBand === 'OUTROS' ||
+          (itBand === 'VR' && bUpper.includes('VR')) ||
+          (itBand === 'PLUXEE' && (bUpper.includes('PLUXEE') || bUpper.includes('SODEXO'))) ||
+          (itBand === 'SODEXO' && (bUpper.includes('SODEXO') || bUpper.includes('PLUXEE'))) ||
+          (itBand === 'ALELO' && bUpper.includes('ALELO')) ||
+          bUpper.includes(itBand) ||
+          itTipo.includes(bUpper)
+        );
+        if (!bandMatch) return false;
+
+        const itMod = tc.modalidade.toUpperCase();
+        const modMatch = (
+          itMod === mUpper ||
+          (mUpper === 'VOUCHER' && (itMod === 'A_VISTA' || itTipo === 'VOUCHER' || itTipo === 'ALIMENTACAO' || itTipo === 'REFEICAO')) ||
+          (mUpper === 'DEBITO' && itMod === 'A_VISTA') ||
+          (mUpper === 'CREDITO' && itMod.includes('A_VISTA'))
+        );
+        return modMatch;
+      });
+    };
+
+    // Monta resposta com taxa efetiva por bandeira/modalidade (Vendas)
     const taxasEfetivas = porBandeiraModalidade.map(row => {
       const bruto  = Number(row._sum.valorBruto  ?? 0);
       const taxa   = Number(row._sum.valorTaxa   ?? 0);  // negativo
       const taxaEfetivaPct = bruto > 0 ? (Math.abs(taxa) / bruto) * 100 : 0;
 
-      // Busca taxa contratada correspondente (se fornecida)
-      const contratada = taxasContratadas?.find(tc =>
-        tc.bandeira.toUpperCase() === row.bandeira.toUpperCase() &&
-        tc.modalidade.toUpperCase().includes(row.modalidade.toUpperCase()),
-      );
+      const contratada = matchContratada(row.bandeira, row.modalidade);
       const taxaMdrContratada = contratada ? Number(contratada.taxaMdr) : null;
       const divergenciaPct = taxaMdrContratada != null
         ? taxaEfetivaPct - taxaMdrContratada
@@ -800,10 +944,64 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
       };
     });
 
+    // 6. Auditoria de taxas em Guias de Reembolso / Recebíveis (taxas reais cobradas em liquidação)
+    const recebiveisComTaxa = await fastify.prisma.adquirenteRecebivel.groupBy({
+      by: ['bandeira', 'modalidade', 'lancamento'],
+      where: {
+        ...(gateway && { gateway }),
+        ...((dataInicio || dataFim) && {
+          dataVencimento: dateRangeCondition(dataInicio, dataFim),
+        }),
+        valorVenda: { gt: 0 },
+      },
+      _sum: {
+        valorVenda: true,
+        descontos: true,
+        valorLiquido: true,
+        valorLiquidado: true,
+      },
+      _count: { idempotencyKey: true },
+    });
+
+    const auditoriaGuias = recebiveisComTaxa.map(row => {
+      const bruto = Number(row._sum.valorVenda ?? 0);
+      const taxa = Math.abs(Number(row._sum.descontos ?? 0));
+      const liq = Number(row._sum.valorLiquido ?? 0);
+      const taxaEfetivaPct = bruto > 0 ? (taxa / bruto) * 100 : 0;
+
+      const contratada = matchContratada(row.bandeira, row.modalidade, row.lancamento);
+      const taxaMdrContratada = contratada ? Number(contratada.taxaMdr) : null;
+      const divergenciaPct = taxaMdrContratada != null ? taxaEfetivaPct - taxaMdrContratada : null;
+      const divergenciaReais = taxaMdrContratada != null ? (divergenciaPct! / 100) * bruto : null;
+
+      return {
+        bandeira: row.bandeira,
+        modalidade: row.modalidade,
+        lancamento: row.lancamento,
+        qtdGuias: row._count.idempotencyKey,
+        totalBruto: bruto,
+        totalTaxa: taxa,
+        totalLiquido: liq,
+        taxaEfetivaPct: Math.round(taxaEfetivaPct * 10000) / 10000,
+        taxaMdrContratada,
+        divergenciaPct: divergenciaPct != null ? Math.round(divergenciaPct * 10000) / 10000 : null,
+        divergenciaReais: divergenciaReais != null ? Math.round(divergenciaReais * 100) / 100 : null,
+      };
+    });
+
+    // 7. Encargos e tarifas operacionais contratadas (ex: Gestão Auxílio R$ 5,99, Tarifa TOR R$ 1,22)
+    const encargosContratados = resolvedContratoId
+      ? await fastify.prisma.taxaEncargo.findMany({
+          where: { contratoId: resolvedContratoId, ativo: true },
+          select: { descricao: true, tipo: true, valor: true },
+        })
+      : [];
+
     return reply.send({
       success: true,
       periodo: { dataInicio, dataFim },
       gateway,
+      contratoId: resolvedContratoId,
       totais: {
         qtdTransacoes: totais._count.idempotencyKey,
         totalBruto:    Number(totais._sum.valorBruto  ?? 0),
@@ -811,6 +1009,12 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
         totalLiquido:  Number(totais._sum.valorLiquido ?? 0),
       },
       taxasEfetivas,
+      auditoriaGuias,
+      encargosContratados: encargosContratados.map(e => ({
+        descricao: e.descricao,
+        tipo: e.tipo,
+        valor: Number(e.valor),
+      })),
       statusConcVendas,
       recebiveisFuturos,
     });
@@ -1596,6 +1800,37 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
+      // Se for voucher/VR e não achou por NSU direto, busca a Guia de Reembolso de lote do período de corte
+      let isGuiaLote = false;
+      if (recebiveis.length === 0 && (venda.gateway === 'VR' || venda.modalidade === 'VOUCHER')) {
+        const dataVendaStr = venda.dataHoraVenda.toISOString().slice(0, 10);
+        const dataVendaObj = new Date(dataVendaStr);
+        let guia = await fastify.prisma.adquirenteRecebivel.findFirst({
+          where: {
+            gateway: venda.gateway,
+            tipoLancamento: 'PAGAMENTO_REALIZADO',
+            dataVenda: { gte: dataVendaObj },
+          },
+          orderBy: { dataVenda: 'asc' },
+        });
+
+        if (!guia) {
+          guia = await fastify.prisma.adquirenteRecebivel.findFirst({
+            where: {
+              gateway: venda.gateway,
+              tipoLancamento: 'PAGAMENTO_REALIZADO',
+              dataVenda: { lte: dataVendaObj },
+            },
+            orderBy: { dataVenda: 'desc' },
+          });
+        }
+
+        if (guia) {
+          recebiveis = [guia];
+          isGuiaLote = true;
+        }
+      }
+
       const somaLiquidado = recebiveis.reduce((a, r) => a + Number(r.valorLiquidado), 0);
       const somaLiquido   = recebiveis.reduce((a, r) => a + Number(r.valorLiquido),   0);
       const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -1607,6 +1842,15 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
         statusPagamento = 'CHARGEBACK';
       } else if (recebiveis.length === 0) {
         statusPagamento = 'SEM_RECEBIVEL';
+      } else if (isGuiaLote) {
+        const r0 = recebiveis[0]!;
+        if (Number(r0.valorLiquidado) > 0) {
+          statusPagamento = 'PAGO';
+        } else if (new Date(r0.dataVencimento) <= today) {
+          statusPagamento = 'VENCIDO';
+        } else {
+          statusPagamento = 'AGUARDANDO';
+        }
       } else if (somaLiquido > 0 && somaLiquidado >= somaLiquido * 0.99) {
         statusPagamento = 'PAGO';
       } else if (somaLiquidado > 0) {
@@ -1639,6 +1883,7 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
         statusPagamento,
         somaLiquidado,
         somaLiquido,
+        isGuiaLote,
         recebiveis: recebiveis.map(r => ({
           idempotencyKey: r.idempotencyKey,
           dataVencimento: r.dataVencimento.toISOString().slice(0, 10),
@@ -1650,6 +1895,8 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
           parcelasInfo:   r.parcelasInfo,
           valorLiquido:   Number(r.valorLiquido),
           valorLiquidado: Number(r.valorLiquidado),
+          valorBruto:     Number(r.valorVenda ?? 0),
+          descontos:      Number(r.descontos ?? 0),
           nsu:            r.nsu,
           autorizacao:    r.autorizacao,
         })),
@@ -1873,21 +2120,43 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
         gateway:       v.gateway,
       }));
 
-    // ── 6. Somente ERP (sem match) ────────────────────────────────────
-    const soErp = erpRows
-      .filter(r => !matchedErpIds.has(r.id))
+    // ── 6. Somente ERP (sem match) — separa PIX Direto ao Banco se configurado ──
+    const isPix = (r: typeof erpRows[0]) =>
+      /pix|qrcode|qr.code/i.test(String(r.nomecartao ?? ''));
+
+    const semMatchErp = erpRows.filter(r => !matchedErpIds.has(r.id));
+
+    const soErp = semMatchErp
+      .filter(r => !erpConfig.pixQrCodeSitefDireto || !isPix(r))
       .map(r => ({
-        id:           String(r.id),
-        nsu:          r.nsu || null,
-        nsuHost:      r.nsu_host || null,
-        autorizacao:  r.autorizacao || null,
-        pdv:          r.pdv || null,
-        nomecartao:   r.nomecartao || null,
-        parcelas:     Number(r.parcelas) || 1,
-        valorErp:     Number(r.valor),
-        data:         r.data,
-        hora:         r.hora,
+        id:          String(r.id),
+        nsu:         r.nsu || null,
+        nsuHost:     r.nsu_host || null,
+        autorizacao: r.autorizacao || null,
+        pdv:         r.pdv || null,
+        nomecartao:  r.nomecartao || null,
+        parcelas:    Number(r.parcelas) || 1,
+        valorErp:    Number(r.valor),
+        data:        r.data,
+        hora:        r.hora,
       }));
+
+    // PIX QR Code via SITEF: liquidados diretamente no banco, sem vínculo adquirente
+    const pixDiretoBanco = erpConfig.pixQrCodeSitefDireto
+      ? semMatchErp
+          .filter(r => isPix(r))
+          .map(r => ({
+            id:          String(r.id),
+            nsu:         r.nsu || null,
+            autorizacao: r.autorizacao || null,
+            pdv:         r.pdv || null,
+            nomecartao:  r.nomecartao || null,
+            valorErp:    Number(r.valor),
+            data:        r.data,
+            hora:        r.hora,
+            bancoDesc:   erpConfig.pixQrCodeBancoDesc || null,
+          }))
+      : [];
 
     // ── 7. Resumo por dia ────────────────────────────────────────────
     const diaMapAdq = new Map<string, { qtd: number; valor: number }>();
@@ -1923,23 +2192,28 @@ const adquirenteRoutes: FastifyPluginAsync = async (fastify) => {
       success: true,
       periodo:  { dataInicio, dataFim },
       kpis: {
-        totalAdquirente:  vendas.length,
-        totalErp:         erpRows.length,
-        matches:          matches.length,
-        divergentes:      divergentes.length,
-        soAdquirente:     soAdquirente.length,
-        soErp:            soErp.length,
-        valorSoAdquirente: soAdquirente.reduce((a, v) => a + v.valorBruto, 0),
-        valorSoErp:        soErp.reduce((a, r) => a + r.valorErp, 0),
-        taxaMatch:         vendas.length > 0
+        totalAdquirente:    vendas.length,
+        totalErp:           erpRows.length,
+        matches:            matches.length,
+        divergentes:        divergentes.length,
+        soAdquirente:       soAdquirente.length,
+        soErp:              soErp.length,
+        pixDiretoBanco:     pixDiretoBanco.length,
+        valorSoAdquirente:  soAdquirente.reduce((a, v) => a + v.valorBruto, 0),
+        valorSoErp:         soErp.reduce((a, r) => a + r.valorErp, 0),
+        valorPixDireto:     pixDiretoBanco.reduce((a, r) => a + r.valorErp, 0),
+        taxaMatch:          vendas.length > 0
           ? Math.round(((matches.length + divergentes.length) / vendas.length) * 10000) / 100
           : 0,
+        pixQrCodeSitefDireto: erpConfig.pixQrCodeSitefDireto,
+        pixQrCodeBancoDesc:   erpConfig.pixQrCodeBancoDesc ?? null,
       },
       resumoPorDia,
-      matches:      matches.slice(0, 500),
+      matches:         matches.slice(0, 500),
       divergentes,
-      soAdquirente: soAdquirente.slice(0, 500),
-      soErp:        soErp.slice(0, 500),
+      soAdquirente:    soAdquirente.slice(0, 500),
+      soErp:           soErp.slice(0, 500),
+      pixDiretoBanco:  pixDiretoBanco.slice(0, 500),
     });
   });
 

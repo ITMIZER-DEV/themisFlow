@@ -27,6 +27,9 @@ interface EmpresaData {
   erpStatus: string | null;
   erpUltimoTeste: string | null;
   erpMensagem: string | null;
+
+  pixQrCodeSitefDireto: boolean;
+  pixQrCodeBancoDesc: string | null;
 }
 
 export function EmpresaConfigPage() {
@@ -54,6 +57,8 @@ export function EmpresaConfigPage() {
     erpStatus: null,
     erpUltimoTeste: null,
     erpMensagem: null,
+    pixQrCodeSitefDireto: false,
+    pixQrCodeBancoDesc: null,
   });
 
   const [erpSenhaInput, setErpSenhaInput] = useState('');
@@ -810,6 +815,70 @@ export function EmpresaConfigPage() {
           )}
         </div>
         )}
+
+        {/* ── Seção: PIX QR Code via SITEF ── */}
+        <div style={{
+          background: 'var(--panel)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-md)',
+          padding: '20px 24px',
+          marginTop: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: '1.1rem' }}>🏦</span>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>
+                PIX QR Code via Terminal SITEF
+              </h3>
+              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                PIX gerado pelo terminal TEF/SITEF é liquidado diretamente no banco, fora do fluxo do adquirente.
+                Ativando esta opção, o Cruzamento ERP classificará transações PIX do ERP como "PIX Direto ao Banco"
+                em vez de apontá-las como divergências.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+              <div
+                onClick={() => setForm(f => ({ ...f, pixQrCodeSitefDireto: !f.pixQrCodeSitefDireto }))}
+                style={{
+                  width: 40, height: 22, borderRadius: 11,
+                  background: form.pixQrCodeSitefDireto ? 'var(--teal)' : 'var(--border)',
+                  position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 3, left: form.pixQrCodeSitefDireto ? 21 : 3,
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: '#fff', transition: 'left .2s',
+                }} />
+              </div>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)' }}>
+                PIX QR Code via SITEF é liquidado diretamente no banco
+              </span>
+              {form.pixQrCodeSitefDireto && (
+                <span className="tab-badge tab-badge-teal" style={{ fontSize: '0.65rem' }}>ATIVO</span>
+              )}
+            </label>
+
+            {form.pixQrCodeSitefDireto && (
+              <div style={fieldStyle}>
+                <label style={labelStyle}>Conta Bancária que Recebe o PIX (opcional)</label>
+                <input
+                  type="text"
+                  placeholder="ex.: Bradesco CC 0001-1 / Ag 1234"
+                  value={form.pixQrCodeBancoDesc ?? ''}
+                  onChange={e => setForm(f => ({ ...f, pixQrCodeBancoDesc: e.target.value || null }))}
+                  style={inputStyle}
+                />
+                <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+                  Exibido como referência no Cruzamento ERP para os lançamentos PIX identificados.
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

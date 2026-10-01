@@ -144,4 +144,39 @@ describe('VR Benefícios Parsers', () => {
       expect(res.vendas[0]!.matchVia).toBe('AUTORIZACAO');
     });
   });
+
+  describe('Auditoria e Projeção de Taxas VR', () => {
+    it('deve calcular a taxa efetiva real cobrada na guia de reembolso e auditar contra taxa contratada', () => {
+      const taxaContratada = 3.50; // 3,50%
+      const valorVenda = 3.60;
+      const descontos = -0.13;
+      const valorLiquido = 3.47;
+
+      const taxaEfetivaPct = Math.round((Math.abs(descontos) / valorVenda) * 1000000) / 10000;
+      expect(taxaEfetivaPct).toBeCloseTo(3.6111, 3);
+
+      const divergenciaPct = Math.round((taxaEfetivaPct - taxaContratada) * 10000) / 10000;
+      expect(divergenciaPct).toBeCloseTo(0.1111, 3); // VR cobrou 0,1111% a mais que o contrato
+
+      const divergenciaReais = Math.round((divergenciaPct / 100) * valorVenda * 100) / 100;
+      expect(divergenciaReais).toBeGreaterThanOrEqual(0);
+    });
+
+    it('deve projetar taxa MDR e valor líquido em vendas VR importadas sem taxa', () => {
+      const taxaContratada = 3.50; // 3,50%
+      const prazoDias = 15;
+      const vendaBruta = 35.91;
+
+      const taxaProjetada = -Math.round((vendaBruta * (taxaContratada / 100)) * 100) / 100;
+      const liquidoProjetado = Math.round((vendaBruta + taxaProjetada) * 100) / 100;
+
+      expect(taxaProjetada).toBe(-1.26);
+      expect(liquidoProjetado).toBe(34.65);
+
+      const dataVenda = new Date('2026-08-01T20:42:00');
+      const dataPrevista = new Date(dataVenda);
+      dataPrevista.setDate(dataPrevista.getDate() + prazoDias);
+      expect(dataPrevista.toISOString().slice(0, 10)).toBe('2026-08-16');
+    });
+  });
 });

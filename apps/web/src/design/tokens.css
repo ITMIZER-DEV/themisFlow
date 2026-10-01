@@ -13,6 +13,7 @@
 
   /* Cores de superfície */
   --bg:          #0b1220;
+  --surface:     #152238;
   --panel:       #152238;
   --panel-alt:   #1a2d4a;
   --border:      #233a5c;
@@ -68,6 +69,7 @@
 /* ── Light theme override ───────────────────────────────────── */
 [data-theme="light"] {
   --bg:          #f0f4f8;
+  --surface:     #ffffff;
   --panel:       #ffffff;
   --panel-alt:   #f5f7fa;
   --border:      #d1dce8;
