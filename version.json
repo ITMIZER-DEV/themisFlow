@@ -1,20 +1,20 @@
 {
   "name": "ThemisFlow",
   "version": "0.2.1",
-  "displayVersion": "v0.2.1+06783e0-dirty",
-  "buildTime": "2026-10-01T10:24:38.880Z",
-  "buildTimeBR": "01/10/2026 07:24:38",
+  "displayVersion": "v0.2.1+e906a90-dirty",
+  "buildTime": "2026-10-01T10:25:44.239Z",
+  "buildTimeBR": "01/10/2026 07:25:44",
   "git": {
-    "commit": "06783e0",
-    "fullCommit": "06783e002db07be37e868741a24808b68c47afd2",
+    "commit": "e906a90",
+    "fullCommit": "e906a9040eaf58aca9482b04cae8142814b46d3e",
     "branch": "main",
-    "tag": null,
+    "tag": "v0.2.1",
     "latestTag": "v0.2.1",
-    "commitDate": "2026-09-30T23:43:47-03:00",
-    "commitDateBR": "30/09/2026 23:43:47",
-    "commitMessage": "feat(voucher,contratos): suporte completo a Pluxee e Alelo com taxas segmentadas, encargos operacionais e auditoria de guias",
-    "commitCount": 9,
+    "commitDate": "2026-10-01T07:24:40-03:00",
+    "commitDateBR": "01/10/2026 07:24:40",
+    "commitMessage": "chore(release): v0.2.1",
+    "commitCount": 10,
     "isDirty": true
   },
-  "environment": "development"
+  "environment": "production"
 }
