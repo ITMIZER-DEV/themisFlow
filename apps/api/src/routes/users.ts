@@ -3,18 +3,21 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
 const createSchema = z.object({
-  nome:  z.string().min(2),
-  email: z.string().email(),
-  senha: z.string().min(6),
-  roles: z.array(z.string()).min(1),
-  ativo: z.boolean().optional().default(true),
+  nome:             z.string().min(2),
+  email:            z.string().email(),
+  senha:            z.string().min(6),
+  roles:            z.array(z.string()).min(1),
+  lojasAutorizadas: z.array(z.string()).optional().default(['GLOBAL']),
+  ativo:            z.boolean().optional().default(true),
 });
 
 const updateSchema = z.object({
-  nome:  z.string().min(2).optional(),
-  email: z.string().email().optional(),
-  ativo: z.boolean().optional(),
-  roles: z.array(z.string()).optional(),
+  nome:             z.string().min(2).optional(),
+  email:            z.string().email().optional(),
+  senha:            z.string().min(6).optional(),
+  ativo:            z.boolean().optional(),
+  roles:            z.array(z.string()).optional(),
+  lojasAutorizadas: z.array(z.string()).optional(),
 });
 
 const usersRoutes: FastifyPluginAsync = async (fastify) => {
@@ -24,7 +27,13 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', { preHandler: pre }, async (_req, reply) => {
     const users = await fastify.prisma.user.findMany({
       select: {
-        id: true, nome: true, email: true, ativo: true, criadoEm: true,
+        id: true,
+        nome: true,
+        email: true,
+        ativo: true,
+        lojasAutorizadas: true,
+        ultimoAcesso: true,
+        criadoEm: true,
         roles: { select: { role: { select: { slug: true, nome: true } } } },
       },
       orderBy: { nome: 'asc' },
@@ -37,7 +46,13 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     const user = await fastify.prisma.user.findUnique({
       where: { id: req.params.id },
       select: {
-        id: true, nome: true, email: true, ativo: true, criadoEm: true,
+        id: true,
+        nome: true,
+        email: true,
+        ativo: true,
+        lojasAutorizadas: true,
+        ultimoAcesso: true,
+        criadoEm: true,
         roles: { select: { role: { select: { slug: true, nome: true } } } },
       },
     });
@@ -50,7 +65,7 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     const body = createSchema.safeParse(req.body);
     if (!body.success) return reply.status(400).send({ success: false, error: body.error.message });
 
-    const { nome, email, senha, roles, ativo } = body.data;
+    const { nome, email, senha, roles, lojasAutorizadas, ativo } = body.data;
     const hash = await bcrypt.hash(senha, 12);
 
     const dbRoles = await fastify.prisma.role.findMany({ where: { slug: { in: roles } } });
@@ -58,10 +73,14 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
 
     const user = await fastify.prisma.user.create({
       data: {
-        nome, email, senha: hash, ativo,
+        nome,
+        email,
+        senha: hash,
+        ativo,
+        lojasAutorizadas: lojasAutorizadas || ['GLOBAL'],
         roles: { create: dbRoles.map((r: { id: string }) => ({ roleId: r.id })) },
       },
-      select: { id: true, nome: true, email: true, ativo: true, criadoEm: true },
+      select: { id: true, nome: true, email: true, ativo: true, lojasAutorizadas: true, criadoEm: true },
     });
 
     return reply.status(201).send({ success: true, user });
@@ -72,9 +91,14 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     const body = updateSchema.safeParse(req.body);
     if (!body.success) return reply.status(400).send({ success: false, error: body.error.message });
 
-    const { roles, ...data } = body.data;
+    const { roles, senha, ...data } = body.data;
+    const updateData: Record<string, any> = { ...data };
 
-    await fastify.prisma.user.update({ where: { id: req.params.id }, data });
+    if (senha) {
+      updateData.senha = await bcrypt.hash(senha, 12);
+    }
+
+    await fastify.prisma.user.update({ where: { id: req.params.id }, data: updateData });
 
     if (roles) {
       const dbRoles = await fastify.prisma.role.findMany({ where: { slug: { in: roles } } });

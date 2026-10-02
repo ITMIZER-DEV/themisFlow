@@ -8,17 +8,19 @@ datasource db {
 }
 
 model User {
-  id              String           @id @default(cuid())
-  nome            String
-  email           String           @unique
-  senha           String
-  ativo           Boolean          @default(true)
-  criadoEm        DateTime         @default(now())
-  atualizadoEm    DateTime         @updatedAt
-  roles           UserRole[]
-  sitefLotes      SitefLote[]
-  taxasContratos  TaxaContrato[]
-  adquirenteLotes AdquirenteLote[]
+  id               String           @id @default(cuid())
+  nome             String
+  email            String           @unique
+  senha            String
+  ativo            Boolean          @default(true)
+  lojasAutorizadas String[]         @default(["GLOBAL"])
+  ultimoAcesso     DateTime?
+  criadoEm         DateTime         @default(now())
+  atualizadoEm     DateTime         @updatedAt
+  roles            UserRole[]
+  sitefLotes       SitefLote[]
+  taxasContratos   TaxaContrato[]
+  adquirenteLotes  AdquirenteLote[]
 }
 
 model Role {

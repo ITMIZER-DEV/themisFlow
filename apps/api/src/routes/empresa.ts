@@ -46,6 +46,82 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ success: true, empresa: config });
   });
 
+  // GET /api/empresa/lojas — Lista lojas reais da empresa (via ERP VRSoftware ou SiTEF/EmpresaConfig)
+  fastify.get('/lojas', { preHandler: [fastify.authenticate] }, async (_req, reply) => {
+    const config = await fastify.prisma.empresaConfig.findUnique({ where: { id: 'default' } });
+    const nomeEmpresa = config?.nomeFantasia || config?.razaoSocial || 'Matriz';
+
+    const lojas: Array<{ id: string; nome: string; codigo: string }> = [];
+
+    // 1. Tenta buscar lojas reais cadastradas no ERP (se configurado e ativo)
+    if (config?.erpAtivo && config?.erpHost && config?.erpDatabase && config?.erpUsuario) {
+      const erpClient = new Client({
+        host: config.erpHost,
+        port: config.erpPorta || 5432,
+        database: config.erpDatabase,
+        user: config.erpUsuario,
+        password: config.erpSenha || undefined,
+        ssl: config.erpSsl ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 3000,
+        options: '-c default_transaction_read_only=on',
+      });
+
+      try {
+        await erpClient.connect();
+        const res = await erpClient.query<{ id: number; descricao: string }>(
+          'SELECT id, descricao FROM public.loja ORDER BY id;'
+        );
+        for (const row of res.rows) {
+          const cod = String(row.id);
+          const desc = (row.descricao || '').trim();
+          lojas.push({
+            id: cod,
+            codigo: cod,
+            nome: `Loja ${cod} - ${desc || nomeEmpresa}`,
+          });
+        }
+      } catch {
+        // ERP inacessível no momento, segue para fallback local
+      } finally {
+        await erpClient.end().catch(() => {});
+      }
+    }
+
+    // 2. Se não obteve do ERP, busca lojas distintas presentes nas transações SiTEF importadas
+    if (lojas.length === 0) {
+      try {
+        const sitefLojas = await fastify.prisma.sitefTransacao.findMany({
+          select: { codigoLoja: true },
+          distinct: ['codigoLoja'],
+          orderBy: { codigoLoja: 'asc' },
+        });
+
+        for (const s of sitefLojas) {
+          if (s.codigoLoja && !lojas.some(l => l.codigo === s.codigoLoja)) {
+            lojas.push({
+              id: s.codigoLoja,
+              codigo: s.codigoLoja,
+              nome: `Loja ${s.codigoLoja} - ${nomeEmpresa}`,
+            });
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 3. Fallback garantido: Loja 1 com o nome da empresa
+    if (lojas.length === 0) {
+      lojas.push({
+        id: '1',
+        codigo: '1',
+        nome: `Loja 1 - ${nomeEmpresa}`,
+      });
+    }
+
+    return reply.send({ success: true, lojas });
+  });
+
   // GET /api/empresa — Dados completos para o painel administrativo
   fastify.get('/', { preHandler: [fastify.requireAdmin] }, async (_req, reply) => {
     let config = await fastify.prisma.empresaConfig.findUnique({

@@ -85,13 +85,7 @@ export const ACL_MODULES: ModuleDef[] = [
   },
 ];
 
-export const AVAILABLE_STORES = [
-  'Loja 1 - Comercial Cavalcante',
-  'Loja 2 - Hiper Cavalcante',
-  'Loja 3 - Supermercado Cavalcante',
-  'Loja 4 - Supermercado Cavalcante',
-  'Loja 5 - Atacadão Centro Oeste',
-];
+export const AVAILABLE_STORES: string[] = [];
 
 // Perfis padrão pré-configurados
 const DEFAULT_ROLES: RoleData[] = [
@@ -150,77 +144,7 @@ const DEFAULT_ROLES: RoleData[] = [
   },
 ];
 
-// Usuários padrão de demonstração / fallback (conforme screenshot)
-const DEFAULT_USERS: UserRow[] = [
-  {
-    id: 'usr-1',
-    nome: 'Administrador',
-    email: 'admin@itmizer.com.br',
-    ativo: true,
-    ultimoAcesso: '17/09/2026, 11:50',
-    lojasAutorizadas: ['GLOBAL'],
-    roles: [{ role: { slug: 'admin', nome: 'Admin' } }],
-  },
-  {
-    id: 'usr-2',
-    nome: 'GUILHERME',
-    email: 'guijsiqueira2005@gmail.com',
-    ativo: true,
-    ultimoAcesso: '15/09/2026, 15:06',
-    lojasAutorizadas: ['GLOBAL'],
-    roles: [{ role: { slug: 'auditor', nome: 'Auditor' } }],
-  },
-  {
-    id: 'usr-3',
-    nome: 'SETOR CRISTINA',
-    email: 'lojacristina@supermercadocavalcante.com.br',
-    ativo: true,
-    ultimoAcesso: '17/09/2026, 11:49',
-    lojasAutorizadas: ['Loja 1 - Comercial Cavalcante'],
-    roles: [{ role: { slug: 'gerente', nome: 'Gerente' } }],
-  },
-  {
-    id: 'usr-4',
-    nome: 'SETOR SUL',
-    email: 'lojasul@supermercadocavalcante.com.br',
-    ativo: true,
-    ultimoAcesso: 'Nunca acessou',
-    lojasAutorizadas: ['Loja 4 - Supermercado Cavalcante'],
-    roles: [{ role: { slug: 'gerente', nome: 'Gerente' } }],
-  },
-  {
-    id: 'usr-5',
-    nome: 'SETOR OESTE',
-    email: 'lojaoeste@supermercadocavalcante.com.br',
-    ativo: true,
-    ultimoAcesso: 'Nunca acessou',
-    lojasAutorizadas: ['Loja 3 - Supermercado Cavalcante'],
-    roles: [{ role: { slug: 'gerente', nome: 'Gerente' } }],
-  },
-  {
-    id: 'usr-6',
-    nome: 'ATACADAO CENTRO OESTE',
-    email: 'lojaatacadao@supermercadocavalcante.com.br',
-    ativo: true,
-    ultimoAcesso: 'Nunca acessou',
-    lojasAutorizadas: ['Loja 5 - Atacadão Centro Oeste'],
-    roles: [{ role: { slug: 'gerente', nome: 'Gerente' } }],
-  },
-  {
-    id: 'usr-7',
-    nome: 'EMANUEL',
-    email: 'compras@supermercadocavalcante.com.br',
-    ativo: true,
-    ultimoAcesso: 'Nunca acessou',
-    lojasAutorizadas: [
-      'Loja 1 - Comercial Cavalcante',
-      'Loja 3 - Supermercado Cavalcante',
-      'Loja 4 - Supermercado Cavalcante',
-      'Loja 5 - Atacadão Centro Oeste',
-    ],
-    roles: [{ role: { slug: 'gerente', nome: 'Gerente' } }],
-  },
-];
+
 
 // Helper para avatar com iniciais e cor pastel consistente
 function getAvatarColor(name: string): { bg: string; color: string } {
@@ -288,20 +212,19 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
       ]);
 
       if (uRes.data.users && uRes.data.users.length > 0) {
-        // Enriquecer com lojas e último acesso se não houver no backend
-        const enrichedUsers: UserRow[] = uRes.data.users.map((u: any, idx: number) => ({
+        const enrichedUsers: UserRow[] = uRes.data.users.map((u: any) => ({
           id: u.id,
           nome: u.nome,
           email: u.email,
           ativo: u.ativo ?? true,
           criadoEm: u.criadoEm,
-          ultimoAcesso: u.ultimoAcesso || (idx === 0 ? '17/09/2026, 11:50' : idx === 1 ? '15/09/2026, 15:06' : idx === 2 ? '17/09/2026, 11:49' : 'Nunca acessou'),
-          lojasAutorizadas: u.lojasAutorizadas || (idx < 2 ? ['GLOBAL'] : [AVAILABLE_STORES[idx % AVAILABLE_STORES.length]!]),
-          roles: u.roles || [{ role: { slug: 'admin', nome: 'Admin' } }],
+          ultimoAcesso: u.ultimoAcesso ?? null,
+          lojasAutorizadas: u.lojasAutorizadas ?? ['GLOBAL'],
+          roles: u.roles ?? [],
         }));
         setUsers(enrichedUsers);
       } else {
-        setUsers(DEFAULT_USERS);
+        setUsers([]);
       }
 
       if (rRes.data.roles && rRes.data.roles.length > 0) {
@@ -330,7 +253,7 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
         setRoles(DEFAULT_ROLES);
       }
     } catch {
-      setUsers(DEFAULT_USERS);
+      setUsers([]);
       setRoles(DEFAULT_ROLES);
     } finally {
       setLoading(false);
@@ -545,7 +468,7 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
           nome: userForm.nome,
           email: userForm.email,
           ativo: userForm.ativo,
-          ultimoAcesso: 'Nunca acessou',
+          ultimoAcesso: null,
           lojasAutorizadas: lojas,
           roles: [{ role: { slug: userForm.roleSlug, nome: roles.find(r => r.slug === userForm.roleSlug)?.nome || userForm.roleSlug } }],
         };
@@ -858,7 +781,9 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
 
                       {/* Último Acesso */}
                       <td style={{ padding: '12px 18px', fontSize: '0.74rem', color: 'var(--text-soft)', fontFamily: 'var(--font-mono)' }}>
-                        {u.ultimoAcesso || 'Nunca acessou'}
+                        {u.ultimoAcesso
+                          ? new Date(u.ultimoAcesso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+                          : 'Nunca acessou'}
                       </td>
 
                       {/* Ações */}
