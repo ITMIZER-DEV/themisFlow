@@ -3,6 +3,8 @@ import { AppLayout } from './layouts/AppLayout';
 import { AuthLayout } from './layouts/AuthLayout';
 import { ProtectedRoute } from './features/auth/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ConciliacaoBancaria } from './features/conciliacao-bancaria/ConciliacaoBancaria';
 import { SitefPage } from './features/sitef/SitefPage';
 import { UsersPage } from './features/admin/UsersPage';
@@ -23,6 +25,8 @@ export const router = createBrowserRouter([
     element: <AuthLayout />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
     ],
   },
   {

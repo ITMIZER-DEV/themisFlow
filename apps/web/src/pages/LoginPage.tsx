@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useMenuStore } from '../stores/menuStore';
 import { ThemisLogo } from '../design/ThemisLogo';
@@ -104,6 +104,15 @@ export function LoginPage() {
           >
             {loading ? 'Entrando…' : 'Entrar'}
           </button>
+
+          <div style={{ textAlign: 'center', marginTop: 14 }}>
+            <Link
+              to="/forgot-password"
+              style={{ fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none' }}
+            >
+              Esqueci minha senha
+            </Link>
+          </div>
         </form>
       </div>
 

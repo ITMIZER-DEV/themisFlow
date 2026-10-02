@@ -1,0 +1,14 @@
+-- Migration: password reset tokens + SMTP config
+
+ALTER TABLE "User"
+  ADD COLUMN IF NOT EXISTS "resetToken"       TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS "resetTokenExpiry" TIMESTAMPTZ;
+
+ALTER TABLE "EmpresaConfig"
+  ADD COLUMN IF NOT EXISTS "smtpHost"      TEXT,
+  ADD COLUMN IF NOT EXISTS "smtpPorta"     INTEGER NOT NULL DEFAULT 587,
+  ADD COLUMN IF NOT EXISTS "smtpUsuario"   TEXT,
+  ADD COLUMN IF NOT EXISTS "smtpSenha"     TEXT,
+  ADD COLUMN IF NOT EXISTS "smtpRemetente" TEXT,
+  ADD COLUMN IF NOT EXISTS "smtpSsl"       BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "smtpAtivo"     BOOLEAN NOT NULL DEFAULT false;

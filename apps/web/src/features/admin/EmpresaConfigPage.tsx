@@ -30,6 +30,14 @@ interface EmpresaData {
 
   pixQrCodeSitefDireto: boolean;
   pixQrCodeBancoDesc: string | null;
+
+  smtpHost: string | null;
+  smtpPorta: number;
+  smtpUsuario: string | null;
+  smtpRemetente: string | null;
+  smtpSsl: boolean;
+  smtpAtivo: boolean;
+  hasSmtpSenha?: boolean;
 }
 
 export function EmpresaConfigPage() {
@@ -59,9 +67,19 @@ export function EmpresaConfigPage() {
     erpMensagem: null,
     pixQrCodeSitefDireto: false,
     pixQrCodeBancoDesc: null,
+    smtpHost: null,
+    smtpPorta: 587,
+    smtpUsuario: null,
+    smtpRemetente: null,
+    smtpSsl: false,
+    smtpAtivo: false,
+    hasSmtpSenha: false,
   });
 
   const [erpSenhaInput, setErpSenhaInput] = useState('');
+  const [smtpSenhaInput, setSmtpSenhaInput] = useState('');
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingDb, setTestingDb] = useState(false);
@@ -155,15 +173,20 @@ export function EmpresaConfigPage() {
       const payload: Record<string, unknown> = {
         ...form,
         erpPorta: Number(form.erpPorta) || 5432,
+        smtpPorta: Number(form.smtpPorta) || 587,
       };
       if (erpSenhaInput.trim()) {
         payload.erpSenha = erpSenhaInput.trim();
+      }
+      if (smtpSenhaInput.trim()) {
+        payload.smtpSenha = smtpSenhaInput.trim();
       }
 
       const res = await api.put<{ success: boolean; empresa: EmpresaData }>('/empresa', payload);
       if (res.data.success) {
         setForm(res.data.empresa);
         setErpSenhaInput('');
+        setSmtpSenhaInput('');
         showToast('Configurações da empresa salvas com sucesso!');
       }
     } catch (err: unknown) {
@@ -212,6 +235,30 @@ export function EmpresaConfigPage() {
       setForm(prev => ({ ...prev, erpStatus: 'ERRO', erpUltimoTeste: new Date().toISOString() }));
     } finally {
       setTestingDb(false);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    setTestingSmtp(true);
+    setSmtpTestResult(null);
+    try {
+      const res = await api.post<{ success: boolean; message?: string; error?: string }>('/empresa/testar-smtp', {
+        smtpHost: form.smtpHost,
+        smtpPorta: Number(form.smtpPorta) || 587,
+        smtpUsuario: form.smtpUsuario,
+        smtpSenha: smtpSenhaInput || undefined,
+        smtpRemetente: form.smtpRemetente,
+        smtpSsl: form.smtpSsl,
+      });
+      setSmtpTestResult({
+        success: res.data.success,
+        message: res.data.message || res.data.error || (res.data.success ? 'Conexão bem-sucedida!' : 'Falha ao conectar.'),
+      });
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.error || 'Erro ao testar conexão SMTP.';
+      setSmtpTestResult({ success: false, message: msg });
+    } finally {
+      setTestingSmtp(false);
     }
   };
 
@@ -815,6 +862,155 @@ export function EmpresaConfigPage() {
           )}
         </div>
         )}
+
+        {/* ── CARD: E-mail / SMTP ── */}
+        <div style={{
+          background: 'var(--panel)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)', padding: 24, display: 'flex', flexDirection: 'column', gap: 18,
+          gridColumn: '1 / -1',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+            <span style={{ fontSize: '1.1rem' }}>✉️</span>
+            <div>
+              <span style={{ fontFamily: 'var(--font-title)', fontWeight: 800, fontSize: '0.95rem', color: 'var(--text)' }}>
+                Configuração de E-mail (SMTP)
+              </span>
+              <div style={{ fontSize: '0.73rem', color: 'var(--muted)', marginTop: 2 }}>
+                Necessário para o envio de e-mails de recuperação de senha.
+              </div>
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+            <div
+              onClick={() => setForm(f => ({ ...f, smtpAtivo: !f.smtpAtivo }))}
+              style={{
+                width: 40, height: 22, borderRadius: 11,
+                background: form.smtpAtivo ? 'var(--teal)' : 'var(--border)',
+                position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 3, left: form.smtpAtivo ? 21 : 3,
+                width: 16, height: 16, borderRadius: '50%',
+                background: '#fff', transition: 'left .2s',
+              }} />
+            </div>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)' }}>
+              Habilitar envio de e-mails via SMTP
+            </span>
+            {form.smtpAtivo && (
+              <span className="tab-badge tab-badge-teal" style={{ fontSize: '0.65rem' }}>ATIVO</span>
+            )}
+          </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Servidor SMTP (Host)</label>
+              <input
+                style={inputStyle}
+                placeholder="ex: smtp.gmail.com"
+                value={form.smtpHost ?? ''}
+                onChange={e => setForm(f => ({ ...f, smtpHost: e.target.value || null }))}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Porta</label>
+              <input
+                type="number"
+                style={inputStyle}
+                placeholder="587"
+                value={form.smtpPorta}
+                onChange={e => setForm(f => ({ ...f, smtpPorta: Number(e.target.value) || 587 }))}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Usuário SMTP (e-mail de login)</label>
+              <input
+                type="email"
+                style={inputStyle}
+                placeholder="envio@suaempresa.com"
+                value={form.smtpUsuario ?? ''}
+                onChange={e => setForm(f => ({ ...f, smtpUsuario: e.target.value || null }))}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                Senha SMTP {form.hasSmtpSenha && <span style={{ color: 'var(--teal)', textTransform: 'none' }}>(já configurada)</span>}
+              </label>
+              <input
+                type="password"
+                style={inputStyle}
+                placeholder={form.hasSmtpSenha ? 'Deixe em branco para manter' : 'Senha ou App Password'}
+                value={smtpSenhaInput}
+                onChange={e => setSmtpSenhaInput(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Nome/E-mail do Remetente</label>
+            <input
+              style={inputStyle}
+              placeholder='ex: "ThemisFlow" <noreply@suaempresa.com>'
+              value={form.smtpRemetente ?? ''}
+              onChange={e => setForm(f => ({ ...f, smtpRemetente: e.target.value || null }))}
+            />
+            <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+              Se vazio, usa o usuário SMTP como remetente.
+            </span>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={form.smtpSsl}
+              onChange={e => setForm(f => ({ ...f, smtpSsl: e.target.checked }))}
+              style={{ accentColor: 'var(--teal)' }}
+            />
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              Usar SSL/TLS (porta 465 normalmente)
+            </span>
+          </label>
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            <button
+              type="button"
+              onClick={() => void handleTestSmtp()}
+              disabled={testingSmtp || !form.smtpHost || !form.smtpUsuario}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                width: '100%', padding: '10px', borderRadius: 'var(--radius-sm)',
+                background: 'var(--panel-alt)', border: '1px solid var(--border)',
+                color: 'var(--text)', fontFamily: 'var(--font-ui)', fontWeight: 700, fontSize: '0.8rem',
+                cursor: (testingSmtp || !form.smtpHost) ? 'not-allowed' : 'pointer',
+                opacity: (testingSmtp || !form.smtpHost) ? 0.6 : 1,
+                transition: 'all .15s',
+              }}
+            >
+              {testingSmtp ? 'Testando…' : '📧 Testar Conexão SMTP'}
+            </button>
+
+            {smtpTestResult && (
+              <div style={{
+                marginTop: 12, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                background: smtpTestResult.success ? 'rgba(0, 201, 177, 0.1)' : 'rgba(255, 93, 108, 0.1)',
+                border: `1px solid ${smtpTestResult.success ? 'var(--teal)' : 'var(--red)'}`,
+                fontSize: '0.75rem', color: 'var(--text)',
+              }}>
+                <div style={{ fontWeight: 700, color: smtpTestResult.success ? 'var(--teal)' : 'var(--red)', marginBottom: 2 }}>
+                  {smtpTestResult.success ? '✓ Conexão bem-sucedida' : '✖ Falha na conexão'}
+                </div>
+                <div style={{ color: 'var(--text-soft)', wordBreak: 'break-all' }}>
+                  {smtpTestResult.message}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* ── Seção: PIX QR Code via SITEF ── */}
         <div style={{

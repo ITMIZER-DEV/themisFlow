@@ -171,6 +171,14 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Modal redefinir senha (admin)
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
+  const [resetNewPwd, setResetNewPwd] = useState('');
+  const [resetSaving, setResetSaving] = useState(false);
+  const [resetErro, setResetErro] = useState('');
+  const [resetOk, setResetOk] = useState(false);
+
   // Modal de edição de Papel & Matriz (Screenshot 3)
   const [editingRole, setEditingRole] = useState<RoleData | null>(null);
   const [roleModalOpen, setRoleModalOpen] = useState(false);
@@ -477,6 +485,34 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
       setUserModalOpen(false);
     } catch (err: unknown) {
       alert('Erro ao salvar usuário: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const openResetModal = (u: UserRow) => {
+    setResetTarget(u);
+    setResetNewPwd('');
+    setResetErro('');
+    setResetOk(false);
+    setResetModalOpen(true);
+  };
+
+  const handleAdminReset = async () => {
+    if (!resetTarget) return;
+    setResetErro('');
+    if (resetNewPwd.length < 6) {
+      setResetErro('A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    setResetSaving(true);
+    try {
+      await api.post(`/users/${resetTarget.id}/reset-password`, { novaSenha: resetNewPwd });
+      setResetOk(true);
+      setTimeout(() => setResetModalOpen(false), 1800);
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.error;
+      setResetErro(msg || 'Erro ao redefinir senha.');
+    } finally {
+      setResetSaving(false);
     }
   };
 
@@ -799,6 +835,17 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
                             }}
                           >
                             ✏️
+                          </button>
+                          <button
+                            onClick={() => openResetModal(u)}
+                            title="Redefinir senha"
+                            style={{
+                              background: 'transparent', border: 'none',
+                              color: 'var(--muted)', cursor: 'pointer', fontSize: '0.9rem',
+                              padding: 4, borderRadius: 4,
+                            }}
+                          >
+                            🔑
                           </button>
                           <button
                             onClick={() => deleteUser(u)}
@@ -1350,6 +1397,105 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
                 <span>✓</span> Salvar Matriz
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: REDEFINIR SENHA (ADMIN) ───────────────────────────── */}
+      {resetModalOpen && resetTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(11, 18, 32, 0.82)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div style={{
+            background: 'var(--panel)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 420,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{
+              padding: '16px 20px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '1.1rem' }}>🔑</span>
+                <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, fontFamily: 'var(--font-title)' }}>
+                  Redefinir Senha
+                </h3>
+              </div>
+              <button onClick={() => setResetModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+            </div>
+
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{
+                padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                background: 'var(--panel-alt)', border: '1px solid var(--border)',
+                fontSize: '0.78rem', color: 'var(--text-soft)',
+              }}>
+                Definindo nova senha para <strong style={{ color: 'var(--text)' }}>{resetTarget.nome}</strong>
+                <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2 }}>{resetTarget.email}</div>
+              </div>
+
+              {resetOk ? (
+                <div style={{
+                  padding: '12px 14px', borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(0, 201, 177, 0.1)', border: '1px solid var(--teal)',
+                  fontSize: '0.8rem', color: 'var(--teal)', fontWeight: 700,
+                }}>
+                  ✓ Senha redefinida com sucesso!
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                      Nova Senha *
+                    </label>
+                    <input
+                      type="password"
+                      value={resetNewPwd}
+                      onChange={e => setResetNewPwd(e.target.value)}
+                      autoFocus
+                      autoComplete="new-password"
+                      placeholder="Mínimo 6 caracteres"
+                      style={{
+                        width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+                        background: 'var(--bg)', border: '1px solid var(--border)',
+                        color: 'var(--text)', fontSize: '0.8rem', outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  {resetErro && (
+                    <div style={{
+                      padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(255, 93, 108, 0.1)', border: '1px solid var(--red)',
+                      fontSize: '0.76rem', color: 'var(--red)',
+                    }}>
+                      {resetErro}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {!resetOk && (
+              <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setResetModalOpen(false)}>Cancelar</button>
+                <button
+                  type="button"
+                  disabled={resetSaving}
+                  onClick={() => void handleAdminReset()}
+                  style={{
+                    padding: '8px 18px', borderRadius: 'var(--radius-sm)',
+                    background: '#ea580c', color: '#fff', border: 'none',
+                    fontWeight: 700, fontSize: '0.78rem', cursor: resetSaving ? 'not-allowed' : 'pointer',
+                    opacity: resetSaving ? 0.7 : 1,
+                  }}
+                >
+                  {resetSaving ? 'Salvando…' : 'Redefinir Senha'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

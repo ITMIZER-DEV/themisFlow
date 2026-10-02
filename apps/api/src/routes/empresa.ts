@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import pg from 'pg';
+import nodemailer from 'nodemailer';
 
 const { Client } = pg;
 
@@ -134,13 +135,13 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // Mascara a senha do ERP por segurança
-    const { erpSenha, ...rest } = config;
+    const { erpSenha, smtpSenha, ...rest } = config;
     return reply.send({
       success: true,
       empresa: {
         ...rest,
         hasErpSenha: Boolean(erpSenha && erpSenha.trim().length > 0),
+        hasSmtpSenha: Boolean(smtpSenha && smtpSenha.trim().length > 0),
       },
     });
   });
@@ -171,6 +172,14 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
 
       pixQrCodeSitefDireto: z.boolean().default(false),
       pixQrCodeBancoDesc:   z.string().optional().nullable(),
+
+      smtpHost:      z.string().optional().nullable(),
+      smtpPorta:     z.number().int().default(587),
+      smtpUsuario:   z.string().optional().nullable(),
+      smtpSenha:     z.string().optional().nullable(),
+      smtpRemetente: z.string().optional().nullable(),
+      smtpSsl:       z.boolean().default(false),
+      smtpAtivo:     z.boolean().default(false),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -178,9 +187,8 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ success: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos' });
     }
 
-    const { erpSenha, ...data } = parsed.data;
+    const { erpSenha, smtpSenha, ...data } = parsed.data;
 
-    // Obtém configuração atual para preservar a senha se não foi reenviada
     const current = await fastify.prisma.empresaConfig.findUnique({ where: { id: 'default' } });
 
     const updateData: Record<string, unknown> = { ...data };
@@ -188,6 +196,11 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
       updateData.erpSenha = erpSenha;
     } else if (current?.erpSenha) {
       updateData.erpSenha = current.erpSenha;
+    }
+    if (smtpSenha !== undefined && smtpSenha !== null && smtpSenha.trim() !== '') {
+      updateData.smtpSenha = smtpSenha;
+    } else if (current?.smtpSenha) {
+      updateData.smtpSenha = current.smtpSenha;
     }
 
     const updated = await fastify.prisma.empresaConfig.upsert({
@@ -199,12 +212,13 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    const { erpSenha: _, ...rest } = updated;
+    const { erpSenha: _e, smtpSenha: _s, ...rest } = updated;
     return reply.send({
       success: true,
       empresa: {
         ...rest,
         hasErpSenha: Boolean(updated.erpSenha && updated.erpSenha.trim().length > 0),
+        hasSmtpSenha: Boolean(updated.smtpSenha && updated.smtpSenha.trim().length > 0),
       },
     });
   });
@@ -752,6 +766,49 @@ const empresaRoutes: FastifyPluginAsync = async (fastify) => {
       try { await client.end(); } catch {}
       const errorMsg = err instanceof Error ? err.message : 'Erro ao sincronizar vendas TEF do ERP';
       return reply.status(500).send({ success: false, error: errorMsg });
+    }
+  });
+  // POST /api/empresa/testar-smtp — Testa a conexão SMTP com os parâmetros fornecidos
+  fastify.post('/testar-smtp', { preHandler: [fastify.requireAdmin] }, async (req, reply) => {
+    const schema = z.object({
+      smtpHost:      z.string().optional(),
+      smtpPorta:     z.number().int().optional(),
+      smtpUsuario:   z.string().optional(),
+      smtpSenha:     z.string().optional(),
+      smtpRemetente: z.string().optional(),
+      smtpSsl:       z.boolean().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    const params = parsed.success ? parsed.data : {};
+
+    const saved = await fastify.prisma.empresaConfig.findUnique({ where: { id: 'default' } });
+
+    const host      = params.smtpHost      ?? saved?.smtpHost      ?? '';
+    const port      = params.smtpPorta     ?? saved?.smtpPorta     ?? 587;
+    const user      = params.smtpUsuario   ?? saved?.smtpUsuario   ?? '';
+    const pass      = params.smtpSenha     ?? saved?.smtpSenha     ?? '';
+    const remetente = params.smtpRemetente ?? saved?.smtpRemetente ?? '';
+    const ssl       = params.smtpSsl       ?? saved?.smtpSsl       ?? false;
+
+    if (!host || !user) {
+      return reply.status(400).send({ success: false, error: 'Host e usuário SMTP são obrigatórios para o teste.' });
+    }
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port: Number(port),
+        secure: ssl,
+        auth: { user, pass },
+      });
+
+      await transporter.verify();
+
+      return reply.send({ success: true, message: `Conexão com ${host}:${port} verificada com sucesso.` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao conectar ao servidor SMTP';
+      return reply.send({ success: false, error: msg });
     }
   });
 };

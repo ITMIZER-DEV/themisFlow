@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import crypto from 'node:crypto';
+import nodemailer from 'nodemailer';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -102,6 +104,106 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/auth/me
   fastify.get('/me', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     return reply.send({ success: true, user: req.user });
+  });
+
+  // POST /api/auth/forgot-password
+  // Gera token de reset e envia e-mail. Responde sempre 200 para não vazar se o e-mail existe.
+  fastify.post('/forgot-password', async (req, reply) => {
+    const schema = z.object({ email: z.string().email() });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.status(400).send({ success: false, error: 'E-mail inválido' });
+
+    const { email } = body.data;
+    const user = await fastify.prisma.user.findUnique({ where: { email } });
+
+    if (user && user.ativo) {
+      const token  = crypto.randomBytes(32).toString('hex');
+      const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+      await fastify.prisma.user.update({
+        where: { id: user.id },
+        data: { resetToken: token, resetTokenExpiry: expiry },
+      });
+
+      const config = await fastify.prisma.empresaConfig.findUnique({ where: { id: 'default' } });
+      const origin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+      const link   = `${origin}/reset-password?token=${token}`;
+
+      if (config?.smtpAtivo && config.smtpHost && config.smtpUsuario) {
+        const transporter = nodemailer.createTransport({
+          host: config.smtpHost,
+          port: config.smtpPorta,
+          secure: config.smtpSsl,
+          auth: { user: config.smtpUsuario, pass: config.smtpSenha || '' },
+        });
+
+        const from = config.smtpRemetente || `ThemisFlow <${config.smtpUsuario}>`;
+        await transporter.sendMail({
+          from,
+          to: email,
+          subject: 'Redefinição de Senha — ThemisFlow',
+          html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+              <h2 style="color:#00c9b1">ThemisFlow</h2>
+              <p>Olá, <strong>${user.nome}</strong>.</p>
+              <p>Recebemos uma solicitação para redefinir a senha da sua conta.</p>
+              <p style="margin:24px 0">
+                <a href="${link}" style="background:#00c9b1;color:#0b1220;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700">
+                  Redefinir Senha
+                </a>
+              </p>
+              <p style="color:#888;font-size:0.85rem">
+                Este link expira em <strong>1 hora</strong>. Se você não solicitou a redefinição, ignore este e-mail.
+              </p>
+              <hr style="border-color:#333;margin:24px 0"/>
+              <p style="color:#555;font-size:0.75rem">${link}</p>
+            </div>
+          `,
+        });
+      } else {
+        // SMTP não configurado — loga o link para uso em desenvolvimento
+        fastify.log.warn({ link }, 'SMTP não configurado — link de reset de senha gerado');
+      }
+    }
+
+    return reply.send({ success: true, message: 'Se o e-mail existir, um link de redefinição foi enviado.' });
+  });
+
+  // GET /api/auth/validate-reset-token/:token
+  fastify.get<{ Params: { token: string } }>('/validate-reset-token/:token', async (req, reply) => {
+    const { token } = req.params;
+    const user = await fastify.prisma.user.findUnique({ where: { resetToken: token } });
+
+    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+      return reply.status(400).send({ success: false, error: 'Link inválido ou expirado.' });
+    }
+
+    return reply.send({ success: true, nome: user.nome, email: user.email });
+  });
+
+  // POST /api/auth/reset-password
+  fastify.post('/reset-password', async (req, reply) => {
+    const schema = z.object({
+      token:    z.string().min(1),
+      novaSenha: z.string().min(6, 'A senha deve ter no mínimo 6 caracteres'),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.status(400).send({ success: false, error: body.error.issues[0]?.message });
+
+    const { token, novaSenha } = body.data;
+    const user = await fastify.prisma.user.findUnique({ where: { resetToken: token } });
+
+    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+      return reply.status(400).send({ success: false, error: 'Link inválido ou expirado.' });
+    }
+
+    const hash = await bcrypt.hash(novaSenha, 12);
+    await fastify.prisma.user.update({
+      where: { id: user.id },
+      data: { senha: hash, resetToken: null, resetTokenExpiry: null },
+    });
+
+    return reply.send({ success: true, message: 'Senha redefinida com sucesso.' });
   });
 };
 

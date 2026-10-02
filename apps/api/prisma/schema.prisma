@@ -14,9 +14,11 @@ model User {
   senha            String
   ativo            Boolean          @default(true)
   lojasAutorizadas String[]         @default(["GLOBAL"])
-  ultimoAcesso     DateTime?
-  criadoEm         DateTime         @default(now())
-  atualizadoEm     DateTime         @updatedAt
+  ultimoAcesso      DateTime?
+  resetToken        String?          @unique
+  resetTokenExpiry  DateTime?
+  criadoEm          DateTime         @default(now())
+  atualizadoEm      DateTime         @updatedAt
   roles            UserRole[]
   sitefLotes       SitefLote[]
   taxasContratos   TaxaContrato[]
@@ -384,7 +386,16 @@ model EmpresaConfig {
 
   // PIX QR Code via terminal SITEF — liquidação direta no banco, fora do fluxo do adquirente
   pixQrCodeSitefDireto  Boolean @default(false)
-  pixQrCodeBancoDesc    String? // ex.: "Bradesco CC 0001-1 / Ag 1234"
+  pixQrCodeBancoDesc    String?
+
+  // SMTP para envio de e-mails (recuperação de senha, notificações)
+  smtpHost          String?
+  smtpPorta         Int      @default(587)
+  smtpUsuario       String?
+  smtpSenha         String?
+  smtpRemetente     String?  // "ThemisFlow <noreply@empresa.com>"
+  smtpSsl           Boolean  @default(false)
+  smtpAtivo         Boolean  @default(false)
 
   atualizadoEm      DateTime  @updatedAt
   criadoEm          DateTime  @default(now())

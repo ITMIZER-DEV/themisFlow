@@ -113,8 +113,25 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
 
   // DELETE /api/users/:id
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: pre }, async (req, reply) => {
-    // Soft delete: desativar em vez de apagar
     await fastify.prisma.user.update({ where: { id: req.params.id }, data: { ativo: false } });
+    return reply.send({ success: true });
+  });
+
+  // POST /api/users/:id/reset-password — Admin redefine a senha diretamente
+  fastify.post<{ Params: { id: string } }>('/:id/reset-password', { preHandler: pre }, async (req, reply) => {
+    const schema = z.object({ novaSenha: z.string().min(6, 'Mínimo 6 caracteres') });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.status(400).send({ success: false, error: body.error.issues[0]?.message });
+
+    const user = await fastify.prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return reply.status(404).send({ success: false, error: 'Usuário não encontrado' });
+
+    const hash = await bcrypt.hash(body.data.novaSenha, 12);
+    await fastify.prisma.user.update({
+      where: { id: req.params.id },
+      data: { senha: hash, resetToken: null, resetTokenExpiry: null },
+    });
+
     return reply.send({ success: true });
   });
 };
