@@ -412,6 +412,8 @@ export function parseTicketRows(rows: RawCell[][], fname = ''): VoucherResult {
     const ec = (col.ec != null ? str(row[col.ec]) : '') || (cnpj || 'GERAL');
     const prodRaw = col.produto != null ? str(row[col.produto]) : 'TICKET';
     const { produtoNome, modalidade } = mapTicketProduto(prodRaw);
+    // numReembolso vincula esta venda ao PAGAMENTO_REALIZADO do extrato de recebidos
+    const numReembolso = col.reembolso != null ? str(row[col.reembolso]).replace(/[^\d]/g, '') : '';
 
     vendas.push({
       idempotencyKey: `TICKET::${ec}::${nsu}::${dataDia}`,
@@ -427,7 +429,7 @@ export function parseTicketRows(rows: RawCell[][], fname = ''): VoucherResult {
       parcelas: 1,
       dataPrimeiroPgto: null,
       cartaoMascarado: '',
-      autorizacao: nsu,
+      autorizacao: numReembolso || nsu,
       nsu,
       terminal: '',
       meioCaptura: 'TEF',
