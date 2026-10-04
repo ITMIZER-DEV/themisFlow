@@ -476,7 +476,7 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
           nome: userForm.nome,
           email: userForm.email,
           ativo: userForm.ativo,
-          ultimoAcesso: null,
+          ultimoAcesso: undefined,
           lojasAutorizadas: lojas,
           roles: [{ role: { slug: userForm.roleSlug, nome: roles.find(r => r.slug === userForm.roleSlug)?.nome || userForm.roleSlug } }],
         };
