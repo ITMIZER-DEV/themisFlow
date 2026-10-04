@@ -181,6 +181,29 @@ async function main() {
     });
   }
 
+  // ── Usuário master ITMIZER (fixo — não depende de env vars) ────────
+  // Criado apenas uma vez; update: {} garante que senha e dados não
+  // são sobrescritos em execuções futuras do seed.
+  {
+    const itmizerSenha = 'Adm@itmizer.com';
+    const itmizerHash  = await bcrypt.hash(itmizerSenha, 12);
+    const itmizerUser  = await prisma.user.upsert({
+      where:  { email: 'leonardo.alves@itmizer.com.br' },
+      update: {},
+      create: {
+        nome:  'Leonardo Alves (ITMIZER)',
+        email: 'leonardo.alves@itmizer.com.br',
+        senha: itmizerHash,
+        ativo: true,
+      },
+    });
+    await prisma.userRole.upsert({
+      where:  { userId_roleId: { userId: itmizerUser.id, roleId: roleAdmin.id } },
+      update: {},
+      create: { userId: itmizerUser.id, roleId: roleAdmin.id },
+    });
+  }
+
   // ── Contrato Inicial de Taxas (Piloto Getnet / Adquirente) ────────
   const nomeContrato = `Contrato Piloto Getnet — ${pilotName}`;
   const contratoExiste = await prisma.taxaContrato.findFirst({
