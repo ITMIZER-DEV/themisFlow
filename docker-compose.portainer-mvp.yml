@@ -1,4 +1,4 @@
-# deploy: v0.2.1+d4d284f
+# deploy: v0.2.1+9cf8240
 # ══════════════════════════════════════════════════════════════════════════════
 # ThemisFlow — docker-compose.portainer-mvp.yml
 # MVP para um único cliente — sem Traefik, acesso direto por porta.
