@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { api } from '../services/api';
+import { VectysLogo } from '../design/VectysLogo';
 import versionData from '../version.json';
 import releasesData from '../releases.json';
 
@@ -54,7 +55,7 @@ export function VersionModal({ onClose }: VersionModalProps) {
 
   function handleCopyDiagnostic() {
     const diagnostic = {
-      app: 'ThemisFlow',
+      app: 'VECTYS by itmizer',
       client: {
         version: versionData.version,
         displayVersion: versionData.displayVersion,
@@ -72,7 +73,7 @@ export function VersionModal({ onClose }: VersionModalProps) {
   }
 
   return (
-    <Modal title="Sobre o ThemisFlow" onClose={onClose} width={580}>
+    <Modal title="Sobre o VECTYS" onClose={onClose} width={580}>
       {/* Tab bar */}
       <div style={{
         display: 'flex',
@@ -128,10 +129,8 @@ export function VersionModal({ onClose }: VersionModalProps) {
             marginBottom: 16,
           }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: 'var(--font-title)', fontWeight: 800, fontSize: '1.05rem', color: 'var(--text)' }}>
-                  ThemisFlow
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <VectysLogo size={18} variant="horizontal" />
                 <span style={{
                   background: 'rgba(0, 201, 177, 0.15)',
                   color: 'var(--teal)',

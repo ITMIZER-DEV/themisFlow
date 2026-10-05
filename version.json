@@ -1,20 +1,20 @@
 {
   "name": "ThemisFlow",
   "version": "0.2.1",
-  "displayVersion": "v0.2.1+a3d6bc4",
-  "buildTime": "2026-10-02T19:33:00.000Z",
-  "buildTimeBR": "02/10/2026 16:33:00",
+  "displayVersion": "v0.2.1+a1092ad-dirty",
+  "buildTime": "2026-10-05T01:02:00.144Z",
+  "buildTimeBR": "04/10/2026 22:02:00",
   "git": {
-    "commit": "a3d6bc4",
-    "fullCommit": "a3d6bc4a172c4a08ed6b6cea02d6b0387817bc26",
+    "commit": "a1092ad",
+    "fullCommit": "a1092ad40bd9377c25e22d28b100f35aeeb2d1a3",
     "branch": "main",
     "tag": null,
     "latestTag": "v0.2.1",
-    "commitDate": "2026-10-02T16:32:48-03:00",
-    "commitDateBR": "02/10/2026 16:32:48",
-    "commitMessage": "fix(ticket): usar numReembolso como autorizacao no parseTicketRows para vincular venda ao recebivel",
-    "commitCount": 14,
-    "isDirty": false
+    "commitDate": "2026-10-04T00:13:13-03:00",
+    "commitDateBR": "04/10/2026 00:13:13",
+    "commitMessage": "chore: trigger rebuild v0.2.1+9cf8240",
+    "commitCount": 19,
+    "isDirty": true
   },
   "environment": "development"
 }

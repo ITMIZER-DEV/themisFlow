@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
-import { ThemisLogo } from '../design/ThemisLogo';
+import { VectysLogo } from '../design/VectysLogo';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -36,19 +36,14 @@ export function ForgotPasswordPage() {
       minHeight: '100vh', background: 'var(--bg)', padding: 24,
     }}>
       <div style={{
-        width: '100%', maxWidth: 380,
+        width: '100%', maxWidth: 390,
         background: 'var(--panel)', border: '1px solid var(--border)',
         borderRadius: 12, padding: '36px 32px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
-          <ThemisLogo size={32} />
-          <div>
-            <div style={{ fontFamily: 'var(--font-title)', fontWeight: 800, fontSize: '1.1rem', letterSpacing: '.04em' }}>
-              ThemisFlow
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--muted)', marginTop: 1 }}>
-              Recuperação de Senha
-            </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28, gap: 8 }}>
+          <VectysLogo size={32} variant="stacked" />
+          <div style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 500 }}>
+            Recuperação de Senha
           </div>
         </div>
 

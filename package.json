@@ -19,9 +19,11 @@
     "test:api": "npm run test -w apps/api",
     "build": "npm run build -w apps/web",
     "dev:api": "npm run dev -w apps/api",
-    "dev:web": "npm run dev -w apps/web"
+    "dev:web": "npm run dev -w apps/web",
+    "screenshot:stitch": "node scripts/capture-stitch-screenshots.mjs"
   },
   "devDependencies": {
+    "playwright": "^1.63.0",
     "xlsx": "0.18.5"
   }
 }

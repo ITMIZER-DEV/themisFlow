@@ -181,6 +181,47 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ success: true, nome: user.nome, email: user.email });
   });
 
+  // POST /api/auth/register — auto-cadastro público (remover quando não for mais necessário)
+  fastify.post('/register', async (req, reply) => {
+    const schema = z.object({
+      nome:  z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
+      email: z.string().email('E-mail inválido'),
+      senha: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) {
+      return reply.status(400).send({ success: false, error: body.error.issues[0]?.message });
+    }
+
+    const { nome, email, senha } = body.data;
+
+    const existing = await fastify.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return reply.status(409).send({ success: false, error: 'Este e-mail já está cadastrado.' });
+    }
+
+    // Tenta atribuir o perfil menos privilegiado disponível
+    const defaultRole = await fastify.prisma.role.findFirst({
+      where: { slug: { in: ['viewer', 'gerente', 'comprador', 'auditor'] } },
+      orderBy: { slug: 'asc' },
+    });
+
+    const hash = await bcrypt.hash(senha, 12);
+    const user = await fastify.prisma.user.create({
+      data: {
+        nome,
+        email,
+        senha: hash,
+        ativo: true,
+        lojasAutorizadas: ['GLOBAL'],
+        ...(defaultRole ? { roles: { create: [{ roleId: defaultRole.id }] } } : {}),
+      },
+      select: { id: true, nome: true, email: true },
+    });
+
+    return reply.status(201).send({ success: true, user });
+  });
+
   // POST /api/auth/reset-password
   fastify.post('/reset-password', async (req, reply) => {
     const schema = z.object({

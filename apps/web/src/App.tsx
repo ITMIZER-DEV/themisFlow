@@ -3,7 +3,7 @@
  * 3 abas: Banco (OFX) | Sistema (XLS) | Comparativo
  */
 import { useState } from 'react';
-import { ThemisLogo } from './design/ThemisLogo';
+import { VectysLogo } from './design/VectysLogo';
 import { BankTab } from './features/bank/BankTab';
 import { SystemTab } from './features/system/SystemTab';
 import { CompareTab } from './features/compare/CompareTab';
@@ -38,12 +38,8 @@ export default function App() {
     <div className="app-shell">
       {/* Header */}
       <header className="app-header" role="banner">
-        <a href="/" className="app-logo" aria-label="ThemisFlow — página inicial">
-          <ThemisLogo size={32} />
-          <div>
-            <div className="app-logo-name">ThemisFlow</div>
-            <div className="app-logo-sub">ITMIZER · Conciliação Bancária</div>
-          </div>
+        <a href="/" className="app-logo" aria-label="VECTYS by itmizer — página inicial" style={{ textDecoration: 'none' }}>
+          <VectysLogo size={28} variant="horizontal" />
         </a>
 
         {/* Indicador de status global */}

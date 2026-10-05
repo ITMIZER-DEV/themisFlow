@@ -18,6 +18,7 @@ function fmtMoeda(v: number) {
 }
 
 function fmtDia(iso: string) {
+  if (!iso || typeof iso !== 'string') return '';
   const parts = iso.split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
   return iso;

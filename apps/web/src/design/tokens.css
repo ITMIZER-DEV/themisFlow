@@ -1,15 +1,24 @@
 /* ============================================================
-   ThemisFlow — Design System
-   Themis: deusa do equilíbrio e da justiça
-   Teal  (#00c9b1) → banco / crédito / ok
-   Gold  (#f0a500) → sistema / saldo / atenção
-   Red   (#ff5d6c) → débito / divergência
+   VECTYS by itmizer — Design System
+   Sistema de Conciliação Bancária, Auditoria de Cartões e Fluxo de Caixa
+
+   Paleta Oficial:
+   Azul Corporativo (#0B5FFF) → tecnologia, precisão bancária
+   Teal Moderno     (#14B8A6) → conciliação, crédito, OK, auditoria
+   Azul Escuro      (#0F2A44) → superfícies de profundidade e contraste
+   Grafite          (#1F2937) → superfícies neutras e separadores
    ============================================================ */
 
 /* ── Tokens ─────────────────────────────────────────────────── */
 :root {
   /* Layout */
   --nav-h: 52px;
+
+  /* Paleta Oficial VECTYS */
+  --vectys-blue:      #0b5fff;
+  --vectys-teal:      #14b8a6;
+  --vectys-navy:      #0f2a44;
+  --vectys-graphite:  #1f2937;
 
   /* Cores de superfície */
   --bg:          #0b1220;
@@ -20,9 +29,9 @@
   --border-soft: #1c2e49;
 
   /* Acentos semânticos */
-  --teal:        #00c9b1;
-  --teal-dim:    #007a6d;
-  --teal-bg:     rgba(0, 201, 177, 0.08);
+  --teal:        #14b8a6;
+  --teal-dim:    #0d9488;
+  --teal-bg:     rgba(20, 184, 166, 0.09);
   --gold:        #f0a500;
   --gold-dim:    #a07000;
   --gold-bg:     rgba(240, 165, 0, 0.08);
@@ -37,9 +46,10 @@
   --muted-dim:   #4a6080;
 
   /* Tipografia */
+  --font-brand:  'Cabinet Grotesk', 'Manrope', 'DM Sans', system-ui, sans-serif;
   --font-ui:     'DM Sans', system-ui, sans-serif;
   --font-mono:   'DM Mono', 'Fira Code', monospace;
-  --font-title:  'Manrope', 'DM Sans', sans-serif;
+  --font-title:  'Cabinet Grotesk', 'Manrope', 'DM Sans', sans-serif;
 
   /* Espaçamento */
   --sp-1:  4px;

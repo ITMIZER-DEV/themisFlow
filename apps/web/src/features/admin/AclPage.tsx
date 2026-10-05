@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 
 // ── Tipos de Dados ──────────────────────────────────────────────────
@@ -165,6 +166,7 @@ function getAvatarColor(name: string): { bg: string; color: string } {
 // ── Componente Principal ───────────────────────────────────────────
 
 export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' | 'papeis' | 'matriz' }) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'usuarios' | 'papeis' | 'matriz'>(initialTab);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<RoleData[]>(DEFAULT_ROLES);
@@ -594,15 +596,28 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
           </button>
         </div>
 
-        <div>
+        <div style={{ display: 'flex', gap: 8 }}>
           {activeTab === 'usuarios' && (
-            <button
-              className="btn btn-teal"
-              style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 6 }}
-              onClick={openCreateUserModal}
-            >
-              <span>+</span> Novo Usuário
-            </button>
+            <>
+              <button
+                style={{
+                  fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--panel-alt)', border: '1px solid var(--border)',
+                  color: 'var(--text)', fontWeight: 700, cursor: 'pointer',
+                }}
+                onClick={() => navigate('/admin/usuarios/wizard')}
+              >
+                <span>📋</span> Cadastro em Lote
+              </button>
+              <button
+                className="btn btn-teal"
+                style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={openCreateUserModal}
+              >
+                <span>+</span> Novo Usuário
+              </button>
+            </>
           )}
           {activeTab === 'papeis' && (
             <button

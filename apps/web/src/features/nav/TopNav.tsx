@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { useMenuStore, type MenuItemData } from '../../stores/menuStore';
 import { useThemeStore } from '../../stores/themeStore';
-import { ThemisLogo } from '../../design/ThemisLogo';
+import { VectysLogo } from '../../design/VectysLogo';
 import { api } from '../../services/api';
 
 function DropdownMenu({ items, onClose }: { items: MenuItemData[]; onClose: () => void }) {
@@ -132,12 +132,9 @@ export function TopNav({ onOpenVersion }: { onOpenVersion?: () => void }) {
       display: 'flex', alignItems: 'stretch',
       padding: '0 20px',
     }}>
-      {/* Logo ThemisFlow */}
-      <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginRight: 12 }}>
-        <ThemisLogo size={24} />
-        <span style={{ fontFamily: 'var(--font-title)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '.04em', color: 'var(--text)' }}>
-          ThemisFlow
-        </span>
+      {/* Logo VECTYS by itmizer */}
+      <NavLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', marginRight: 14 }}>
+        <VectysLogo size={22} variant="horizontal" />
       </NavLink>
 
       {/* Nome Fantasia da Empresa Configurada */}
@@ -263,7 +260,7 @@ export function TopNav({ onOpenVersion }: { onOpenVersion?: () => void }) {
                   <line x1="12" y1="16" x2="12" y2="12" />
                   <line x1="12" y1="8" x2="12.01" y2="8" />
                 </svg>
-                Sobre o ThemisFlow
+                Sobre o VECTYS
               </button>
             )}
 

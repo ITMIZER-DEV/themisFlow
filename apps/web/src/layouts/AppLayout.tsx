@@ -23,7 +23,7 @@ export function AppLayout() {
         justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span>ThemisFlow — ITMIZER</span>
+          <span>VECTYS by itmizer</span>
           <button
             onClick={() => setShowVersionModal(true)}
             style={{

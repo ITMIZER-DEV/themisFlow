@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useMenuStore } from '../stores/menuStore';
-import { ThemisLogo } from '../design/ThemisLogo';
+import { VectysLogo } from '../design/VectysLogo';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -30,21 +30,13 @@ export function LoginPage() {
       minHeight: '100vh', background: 'var(--bg)', padding: 24,
     }}>
       <div style={{
-        width: '100%', maxWidth: 380,
+        width: '100%', maxWidth: 400,
         background: 'var(--panel)', border: '1px solid var(--border)',
         borderRadius: 12, padding: '36px 32px',
       }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
-          <ThemisLogo size={32} />
-          <div>
-            <div style={{ fontFamily: 'var(--font-title)', fontWeight: 800, fontSize: '1.1rem', letterSpacing: '.04em' }}>
-              ThemisFlow
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--muted)', marginTop: 1 }}>
-              Sistema Financeiro ITMIZER
-            </div>
-          </div>
+        {/* Logo VECTYS by itmizer */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
+          <VectysLogo size={34} variant="stacked" showSubtitle={true} />
         </div>
 
         <form onSubmit={e => void handleSubmit(e)}>
@@ -105,12 +97,18 @@ export function LoginPage() {
             {loading ? 'Entrando…' : 'Entrar'}
           </button>
 
-          <div style={{ textAlign: 'center', marginTop: 14 }}>
+          <div style={{ textAlign: 'center', marginTop: 14, display: 'flex', justifyContent: 'space-between' }}>
             <Link
               to="/forgot-password"
               style={{ fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none' }}
             >
               Esqueci minha senha
+            </Link>
+            <Link
+              to="/cadastro"
+              style={{ fontSize: '0.75rem', color: 'var(--teal)', textDecoration: 'none' }}
+            >
+              Criar conta
             </Link>
           </div>
         </form>

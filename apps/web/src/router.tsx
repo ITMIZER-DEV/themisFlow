@@ -5,6 +5,7 @@ import { ProtectedRoute } from './features/auth/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { ConciliacaoBancaria } from './features/conciliacao-bancaria/ConciliacaoBancaria';
 import { SitefPage } from './features/sitef/SitefPage';
 import { UsersPage } from './features/admin/UsersPage';
@@ -19,12 +20,14 @@ import { ConcOFXPage }     from './features/conc-ofx/ConcOFXPage';
 import { EmpresaConfigPage } from './features/admin/EmpresaConfigPage';
 import { SftpConfigPage } from './features/admin/SftpConfigPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+import { UserWizardPage } from './features/admin/UserWizardPage';
 
 export const router = createBrowserRouter([
   {
     element: <AuthLayout />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      { path: '/cadastro', element: <RegisterPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
     ],
@@ -48,11 +51,12 @@ export const router = createBrowserRouter([
           {
             element: <ProtectedRoute requireAdmin />,
             children: [
-              { path: '/admin/empresa',  element: <EmpresaConfigPage /> },
-              { path: '/admin/sftp',     element: <SftpConfigPage /> },
-              { path: '/admin/usuarios', element: <UsersPage /> },
-              { path: '/admin/papeis',   element: <RolesPage /> },
-              { path: '/admin/menu',     element: <MenuConfigPage /> },
+              { path: '/admin/empresa',         element: <EmpresaConfigPage /> },
+              { path: '/admin/sftp',            element: <SftpConfigPage /> },
+              { path: '/admin/usuarios',        element: <UsersPage /> },
+              { path: '/admin/usuarios/wizard', element: <UserWizardPage /> },
+              { path: '/admin/papeis',          element: <RolesPage /> },
+              { path: '/admin/menu',            element: <MenuConfigPage /> },
             ],
           },
         ],
