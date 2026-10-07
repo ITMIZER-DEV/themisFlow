@@ -518,9 +518,13 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
     }
   };
 
-  const deleteUser = (u: UserRow) => {
-    if (window.confirm(`Deseja realmente desativar ou remover o usuário "${u.nome}"?`)) {
-      setUsers(prev => prev.filter(user => user.id !== u.id));
+  const deleteUser = async (u: UserRow) => {
+    if (!window.confirm(`Desativar o usuário "${u.nome}"? Ele perderá o acesso ao sistema.`)) return;
+    try {
+      await api.delete(`/users/${u.id}`);
+      await loadData();
+    } catch (err: unknown) {
+      alert('Erro ao desativar usuário: ' + ((err as any)?.response?.data?.error || 'tente novamente.'));
     }
   };
 
@@ -863,8 +867,8 @@ export function AclPage({ initialTab = 'usuarios' }: { initialTab?: 'usuarios' |
                             🔑
                           </button>
                           <button
-                            onClick={() => deleteUser(u)}
-                            title="Remover usuário"
+                            onClick={() => void deleteUser(u)}
+                            title="Desativar usuário"
                             style={{
                               background: 'transparent', border: 'none',
                               color: 'var(--muted)', cursor: 'pointer', fontSize: '0.9rem',
